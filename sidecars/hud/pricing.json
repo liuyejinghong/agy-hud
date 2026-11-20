@@ -1,0 +1,86 @@
+{
+  "currency": "USD",
+  "unit": "per_1m_tokens",
+  "updatedAt": "2026-11-20",
+  "default": {
+    "displayName": "{raw}",
+    "rates": { "input": 1.50, "cacheRead": 0.075, "output": 7.50 }
+  },
+  "rules": [
+    {
+      "prefix": "gemini-flash-worker-agy",
+      "displayName": "Hydrogen",
+      "rates": { "input": 1.50, "cacheRead": 0.075, "output": 7.50 }
+    },
+    {
+      "prefix": "gemini-pro-orchestrator-neon",
+      "displayName": "Orchestrator (Neon)",
+      "rates": { "input": 3.00, "cacheRead": 0.15, "output": 15.00 }
+    },
+    {
+      "prefix": "gemini-pro-orchestrator-argon",
+      "displayName": "Orchestrator (Argon)",
+      "rates": { "input": 2.00, "cacheRead": 0.10, "output": 10.00 },
+      "scheduled": [
+        { "effectiveFrom": "2026-12-01", "rates": { "input": 4.00, "cacheRead": 0.20, "output": 20.00 } }
+      ]
+    },
+    {
+      "prefix": "gemini-pro-orchestrator",
+      "displayName": "Orchestrator (Carbon)",
+      "rates": { "input": 2.00, "cacheRead": 0.10, "output": 10.00 },
+      "scheduled": [
+        { "effectiveFrom": "2026-12-01", "rates": { "input": 4.00, "cacheRead": 0.20, "output": 20.00 } }
+      ]
+    },
+    {
+      "prefix": "gemini-4-hydrogen",
+      "displayName": "Hydrogen",
+      "rates": { "input": 1.50, "cacheRead": 0.075, "output": 7.50 }
+    },
+    {
+      "prefix": "gemini-4-neon",
+      "displayName": "Neon",
+      "rates": { "input": 3.00, "cacheRead": 0.15, "output": 15.00 }
+    },
+    {
+      "prefix": "gemini-4-carbon",
+      "displayName": "Carbon",
+      "rates": { "input": 2.00, "cacheRead": 0.10, "output": 10.00 },
+      "scheduled": [
+        { "effectiveFrom": "2026-12-01", "rates": { "input": 4.00, "cacheRead": 0.20, "output": 20.00 } }
+      ]
+    },
+    {
+      "prefix": "gemini-4-argon",
+      "displayName": "Argon",
+      "rates": { "input": 2.00, "cacheRead": 0.10, "output": 10.00 },
+      "scheduled": [
+        { "effectiveFrom": "2026-12-01", "rates": { "input": 4.00, "cacheRead": 0.20, "output": 20.00 } }
+      ]
+    },
+    {
+      "prefix": "gemini-3.8-flash",
+      "displayName": "3.8 Flash",
+      "rates": { "input": 0.75, "cacheRead": 0.075, "output": 3.75 },
+      "scheduled": [
+        { "effectiveFrom": "2027-01-01", "rates": { "input": 1.50, "cacheRead": 0.15, "output": 7.50 } }
+      ]
+    },
+    {
+      "prefix": "claude-opus-5-5",
+      "displayName": "Claude Opus 5.5",
+      "rates": { "input": 4.00, "cacheRead": 0.20, "output": 20.00 }
+    },
+    {
+      "prefix": "claude-sonnet-5-5",
+      "displayName": "Claude Sonnet 5.5",
+      "rates": { "input": 2.00, "cacheRead": 0.10, "output": 10.00 }
+    },
+    {
+      "prefix": "gpt-oss-120b",
+      "displayName": "GPT-OSS 120B",
+      "rates": { "input": 0.50, "cacheRead": 0.05, "output": 1.50 }
+    }
+  ]
+}

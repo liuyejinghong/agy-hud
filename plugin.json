@@ -1,0 +1,21 @@
+{
+  "name": "agy-hud",
+  "displayName": "Agy HUD",
+  "version": "1.0.0",
+  "description": "Real-time HUD side panel for Antigravity: per-model token generation speed, context window & compaction tracking, cache freshness countdown, 5h quota pools, and local Desktop token/USD usage analytics.",
+  "logo": "assets/logo.svg",
+  "author": {
+    "name": "liuyejinghong",
+    "url": "https://github.com/liuyejinghong"
+  },
+  "homepage": "https://github.com/liuyejinghong/agy-hud",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/liuyejinghong/agy-hud"
+  },
+  "suggestedPrompts": [
+    "Open Agy HUD to inspect current context usage and model generation speed",
+    "Check today's Antigravity token usage and estimated API USD cost",
+    "Check whether the current conversation context cache is stale before running /compact"
+  ]
+}

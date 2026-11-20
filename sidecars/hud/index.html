@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="frame-src 'none'; child-src 'none'" />
+  <title>Agy HUD</title>
+  <script src="/preload.js"></script>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div id="app" class="shell">
+    <header class="header">
+      <div class="header-left">
+        <h1 class="title">Agy HUD</h1>
+        <span id="live-pill" class="live-pill" role="status" title="等待会话数据">
+          <span class="live-dot" aria-hidden="true"></span>
+          <span id="live-label">连接中</span>
+        </span>
+      </div>
+      <nav class="tabs" role="tablist" aria-label="视图切换">
+        <button id="tab-overview" type="button" role="tab" aria-selected="true" class="tab active">总览</button>
+        <button id="tab-trend" type="button" role="tab" aria-selected="false" class="tab">趋势</button>
+      </nav>
+    </header>
+
+    <div id="state-banner" class="state-banner hidden"></div>
+
+    <main id="view-overview" class="view">
+      <!-- 1. 速度（按模型） -->
+      <section class="section">
+        <div class="section-head">
+          <div class="section-title-group">
+            <span class="section-title" title="按模型统计本会话纯生成速度（已扣 TTFT）">速度</span>
+            <span class="section-note">tok/s</span>
+          </div>
+          <button id="scope-toggle" type="button" class="scope-btn hidden" title="切换统计全部会话或仅当前选中的代理">全部</button>
+        </div>
+        <div id="model-list" class="model-list">
+          <div class="empty-card">读取中…</div>
+        </div>
+      </section>
+
+      <!-- 2. 上下文 -->
+      <section class="section">
+        <div class="section-head">
+          <span class="section-title">上下文</span>
+          <span id="session-summary" class="section-note tabular-nums"></span>
+        </div>
+
+        <div id="main-card" class="context-card main-card" role="button" tabindex="0" title="点击返回主会话">
+          <div class="card-top">
+            <div class="card-left">
+              <span class="agent-name">主会话</span>
+              <span id="main-model" class="badge-muted">—</span>
+            </div>
+            <span id="main-ratio" class="ratio tabular-nums">— / —</span>
+          </div>
+          <div id="main-progress-track" class="progress-track">
+            <div id="main-bar-cache" class="progress-seg" style="width: 0%;"></div>
+            <div id="main-bar-fresh" class="progress-seg progress-fresh" style="width: 0%;"></div>
+            <div id="main-bar-est" class="progress-seg progress-est" style="width: 0%;"></div>
+          </div>
+          <div class="card-sub tabular-nums">
+            <span id="main-split">缓存 — · 新增 —</span>
+            <span id="main-think" class="think-note">思考占输出 —</span>
+          </div>
+          <div id="cache-ttl-row" class="cache-ttl-row tabular-nums">
+            <span class="cache-ttl-left">
+              <span id="cache-ttl-dot" class="cache-ttl-dot"></span>
+              <span id="cache-ttl-text">缓存 —</span>
+            </span>
+            <span id="main-remaining" class="cache-ttl-right">剩 —</span>
+          </div>
+        </div>
+
+        <div id="sub-section" class="sub-section hidden">
+          <div class="sub-head">
+            <span>子代理</span>
+            <span id="sub-count" class="tabular-nums">0</span>
+          </div>
+          <div id="sub-list" class="sub-list"></div>
+        </div>
+
+        <div id="focus-bar" class="focus-bar hidden">
+          <span>查看：<strong id="focus-name">主会话</strong></span>
+          <button id="focus-reset" type="button" class="scope-btn">返回主会话</button>
+        </div>
+      </section>
+
+      <!-- 3. 配额（5h 窗口 · 剩余/已用切换） -->
+      <section class="section">
+        <div class="section-head">
+          <div class="section-title-group">
+            <span class="section-title">配额</span>
+            <span class="section-note">5h 窗口</span>
+          </div>
+          <div class="seg-group" role="group" aria-label="配额展示方式">
+            <button data-qmode="remaining" type="button" class="seg-btn qmode-btn active">剩余</button>
+            <button data-qmode="used" type="button" class="seg-btn qmode-btn">已用</button>
+          </div>
+        </div>
+        <div id="quota-card" class="context-card quota-card" title="点击切换 剩余 / 已用">
+          <div class="section-note">读取中…</div>
+        </div>
+      </section>
+
+      <!-- 4. 用量（Antigravity 桌面端 · 合并缓存命中率 · 美元折算） -->
+      <section class="section">
+        <div class="section-head usage-head">
+          <div class="section-title-group">
+            <span class="section-title">用量</span>
+            <div class="seg-group" role="group" aria-label="用量单位">
+              <button data-umode="usd" type="button" class="seg-btn umode-btn">USD</button>
+              <button data-umode="all" type="button" class="seg-btn umode-btn active">含缓存</button>
+              <button data-umode="net" type="button" class="seg-btn umode-btn">净消耗</button>
+            </div>
+          </div>
+          <div class="seg-group" role="group" aria-label="统计周期">
+            <button data-urange="today" type="button" class="seg-btn urange-btn active">今日</button>
+            <button data-urange="7d" type="button" class="seg-btn urange-btn">7天</button>
+            <button data-urange="30d" type="button" class="seg-btn urange-btn">30天</button>
+          </div>
+        </div>
+
+        <div id="usage-card" class="context-card usage-card">
+          <div class="usage-hero">
+            <div class="usage-hero-left">
+              <span id="usage-hero-primary" class="usage-hero-num tabular-nums">—</span>
+              <span id="usage-hero-unit" class="section-note">tokens</span>
+            </div>
+            <span id="usage-hero-meta" class="section-note tabular-nums">—</span>
+          </div>
+
+          <div class="usage-stats tabular-nums">
+            <div class="usage-stat">
+              <div class="usage-stat-top">
+                <span>输入</span>
+                <span id="usage-sub-in">—</span>
+              </div>
+              <div id="usage-main-in" class="usage-stat-val">—</div>
+            </div>
+            <div class="usage-stat">
+              <div class="usage-stat-top">
+                <span>缓存</span>
+                <span id="usage-sub-cache">—</span>
+              </div>
+              <div id="usage-main-cache" class="usage-stat-val">—</div>
+            </div>
+            <div class="usage-stat">
+              <div class="usage-stat-top">
+                <span>输出</span>
+                <span id="usage-sub-out">—</span>
+              </div>
+              <div id="usage-main-out" class="usage-stat-val">—</div>
+            </div>
+          </div>
+
+          <div class="usage-chart-wrap">
+            <div id="usage-bars" class="usage-bars"></div>
+            <div id="usage-axis" class="usage-axis tabular-nums"></div>
+            <div id="usage-readout" class="usage-readout tabular-nums">—</div>
+          </div>
+
+          <div id="usage-models" class="usage-models"></div>
+        </div>
+      </section>
+    </main>
+
+    <main id="view-trend" class="view hidden">
+      <div id="trend-focus-bar" class="trend-focus-bar hidden">
+        <div class="trend-focus-left">
+          <span>查看：</span>
+          <strong id="trend-focus-label">主会话</strong>
+        </div>
+        <button id="trend-reset-focus" type="button" class="scope-btn">返回主会话</button>
+      </div>
+
+      <section class="context-card">
+        <div class="card-top">
+          <span class="agent-name">上下文曲线</span>
+          <span class="section-note">75% 警戒线</span>
+        </div>
+        <svg id="trend-chart" viewBox="0 0 380 116" class="trend-svg" aria-label="上下文增长曲线"></svg>
+      </section>
+
+      <section id="breakdown-card" class="context-card hidden">
+        <div class="card-top">
+          <span class="agent-name">占用构成</span>
+          <span id="breakdown-total" class="section-note tabular-nums"></span>
+        </div>
+        <div id="breakdown-list" class="breakdown-list"></div>
+      </section>
+
+      <section class="table-card">
+        <div class="table-head">
+          <span>#</span>
+          <span>模型</span>
+          <span class="text-right">上下文</span>
+          <span class="text-right">输出</span>
+          <span class="text-right">速度</span>
+        </div>
+        <div id="trend-rows" class="table-body tabular-nums"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
