@@ -483,6 +483,10 @@ html, body {
 .cache-ttl-dot.compacting { background: var(--cm-warning); }
 .cache-ttl-dot.expired { background: var(--cm-error); }
 
+.cache-ttl-dot.pulsing {
+  animation: agy-pulse 1.6s ease-in-out infinite;
+}
+
 .cache-ttl-right {
   white-space: nowrap;
 }

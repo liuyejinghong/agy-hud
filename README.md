@@ -15,7 +15,7 @@ Real-time telemetry HUD sidecar plugin for **Google Antigravity**, docked in the
   - Shows exact `cached / fresh / estimated` bar segments, thinking token share (`思考占输出 XX%`), remaining headroom, and subagent / Swarm member inspection.
   - Detects in-progress and just-completed `/compact` checkpoints immediately with post-compaction size estimation until the next turn.
 - **5-Minute Reference Cache Countdown** / **缓存保鲜倒计时**
-  - Live 1s elapsed/remaining indicator (`< 3m` hot, `3–5m` critical, `>= 5m` likely expired) to help decide when to run `/compact`.
+  - Pauses automatically while the main session or subagents are actively running (`运行中 · 缓存保鲜` / `会话活跃中 · 暂停计时`), and ticks down in real time once idle (`< 3m` hot, `3–5m` critical, `>= 5m` likely expired) to help decide when to run `/compact`.
 - **5h Rolling Quota Pools** / **配额监控**
   - Displays real remaining/used percentages and reset countdowns for `Gemini` and `Claude & GPT` 5h windows (click to toggle `剩余 / 已用`).
 - **Local Desktop Usage & API USD Value** / **桌面端用量与折算价值**

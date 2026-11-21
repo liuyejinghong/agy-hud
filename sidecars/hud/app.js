@@ -197,12 +197,29 @@
     if (!dot || !txt || !row) return;
 
     const m = state.data?.main;
-    dot.classList.remove('hot', 'warn', 'expired', 'compacting');
+    dot.classList.remove('hot', 'warn', 'expired', 'compacting', 'pulsing');
 
     if (m?.compaction?.state === 'running') {
       dot.classList.add('compacting');
       txt.textContent = '正在压缩上下文…';
       row.title = '正在生成会话摘要并压缩历史消息，完成后上下文占用将自动回落';
+      return;
+    }
+
+    if (m?.status === 'running') {
+      dot.classList.add('hot', 'pulsing');
+      txt.textContent = '运行中 · 缓存保鲜';
+      row.title = '主会话正在运行，每次模型调用都会滚动续期前缀缓存；本轮结束进入闲置后再开始倒计时。';
+      return;
+    }
+
+    const runningSubs = (state.data?.subagents || []).filter((s) => s.status === 'running').length;
+    if (runningSubs > 0) {
+      dot.classList.add('hot', 'pulsing');
+      txt.textContent = '会话活跃中 · 暂停计时';
+      row.title =
+        `当前有 ${runningSubs} 个子代理正在运行，会话处于活跃期，暂停闲置倒计时；` +
+        '待全部任务结束进入闲置后再开始计时（注：子代理使用独立上下文，若主会话等待超过 5 分钟，汇总首轮缓存仍有可能重建）。';
       return;
     }
 
