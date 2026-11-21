@@ -13,6 +13,7 @@
     <header class="header">
       <div class="header-left">
         <h1 class="title">Agy HUD</h1>
+        <span id="app-version" class="app-version tabular-nums" title="当前插件运行版本">__PLUGIN_VERSION__</span>
         <span id="live-pill" class="live-pill" role="status" title="等待会话数据">
           <span class="live-dot" aria-hidden="true"></span>
           <span id="live-label">连接中</span>
@@ -75,11 +76,20 @@
         </div>
 
         <div id="sub-section" class="sub-section hidden">
-          <div class="sub-head">
-            <span>子代理</span>
-            <span id="sub-count" class="tabular-nums">0</span>
+          <div id="sub-active-wrap" class="sub-group hidden">
+            <div class="sub-head">
+              <span>活跃子代理</span>
+              <span id="sub-count" class="tabular-nums">0</span>
+            </div>
+            <div id="sub-list" class="sub-list"></div>
           </div>
-          <div id="sub-list" class="sub-list"></div>
+          <div id="sub-idle-wrap" class="sub-group hidden">
+            <button id="sub-idle-toggle" type="button" class="sub-idle-toggle" aria-expanded="false">
+              <span id="sub-idle-caret" class="sub-idle-caret" aria-hidden="true">▸</span>
+              <span id="sub-idle-label">已完成 0 个子代理</span>
+            </button>
+            <div id="sub-idle-list" class="sub-list hidden"></div>
+          </div>
         </div>
 
         <div id="focus-bar" class="focus-bar hidden">

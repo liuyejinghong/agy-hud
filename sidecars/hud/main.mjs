@@ -25,6 +25,15 @@ import { createUsageScanner } from './usage.mjs';
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
+function readPluginVersion() {
+  try {
+    const raw = JSON.parse(readFileSync(join(__dirname, '..', '..', 'plugin.json'), 'utf-8'));
+    return typeof raw?.version === 'string' && raw.version.trim() ? raw.version.trim() : '';
+  } catch {
+    return '';
+  }
+}
+const PLUGIN_VERSION = readPluginVersion();
 const ID_RE = /^[0-9a-f-]{8,}$/i;
 const LABELED_CONV_RE = /(?:conversationId|conversation_id|subagentConversationId|subagent_conversation_id)["']?\s*[:=]\s*["']?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi;
 const SUBAGENT_ID_KEYS = new Set([
@@ -656,14 +665,15 @@ async function buildMetricsPayload(rootConv, clientEtag = '') {
       a.label,
     ].join(':'))
     .join('|');
-  const etag = `${rootConv}#${quotaRes.fingerprint}#${agentSig}`;
+  const etag = `${PLUGIN_VERSION}#${rootConv}#${quotaRes.fingerprint}#${agentSig}`;
 
   if (clientEtag && clientEtag === etag) {
-    return { conversationId: rootConv, ready: true, unchanged: true, etag };
+    return { conversationId: rootConv, version: PLUGIN_VERSION, ready: true, unchanged: true, etag };
   }
 
   return {
     conversationId: rootConv,
+    version: PLUGIN_VERSION,
     ready: true,
     unchanged: false,
     updatedAt: new Date().toISOString(),
@@ -687,7 +697,12 @@ const usageScanner = createUsageScanner({
   pricingPath: join(__dirname, 'pricing.json'),
 });
 
-app.page('/', () => readFileSync(join(__dirname, 'index.html'), 'utf-8'));
+app.page('/', () =>
+  readFileSync(join(__dirname, 'index.html'), 'utf-8').replace(
+    '__PLUGIN_VERSION__',
+    PLUGIN_VERSION ? `v${PLUGIN_VERSION}` : ''
+  )
+);
 
 for (const [route, [file, contentType]] of Object.entries(STATIC)) {
   app.api(
@@ -700,13 +715,14 @@ for (const [route, [file, contentType]] of Object.entries(STATIC)) {
 app.api('/api/metrics', async (data) => {
   const conv = String(data.conversationId || app.config.conversationId || '').trim();
   if (!conv || !ID_RE.test(conv)) {
-    return { conversationId: conv || null, ready: false, error: '等待会话上下文' };
+    return { conversationId: conv || null, version: PLUGIN_VERSION, ready: false, error: '等待会话上下文' };
   }
   try {
     return await buildMetricsPayload(conv, typeof data.etag === 'string' ? data.etag : '');
   } catch (err) {
     return {
       conversationId: conv,
+      version: PLUGIN_VERSION,
       ready: false,
       error: err instanceof Error ? err.message : String(err),
     };

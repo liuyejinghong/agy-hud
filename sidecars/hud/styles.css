@@ -92,6 +92,15 @@ html, body {
   text-overflow: ellipsis;
 }
 
+.app-version {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--cm-fg-muted);
+  opacity: 0.8;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .live-pill {
   display: inline-flex;
   align-items: center;
@@ -495,6 +504,41 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 5px;
+}
+
+.sub-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sub-idle-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px dashed var(--cm-card-border);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--cm-fg-muted);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.sub-idle-toggle:hover {
+  background: var(--cm-hover);
+  color: var(--cm-fg);
+}
+
+.sub-idle-caret {
+  display: inline-block;
+  width: 10px;
+  text-align: center;
+  flex-shrink: 0;
 }
 
 .sub-head {

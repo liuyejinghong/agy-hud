@@ -1,7 +1,7 @@
 {
   "name": "agy-hud",
   "displayName": "Agy HUD",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Real-time HUD side panel for Antigravity: per-model token generation speed, context window & compaction tracking, cache freshness countdown, 5h quota pools, and local Desktop token/USD usage analytics.",
   "logo": "assets/logo.svg",
   "author": {

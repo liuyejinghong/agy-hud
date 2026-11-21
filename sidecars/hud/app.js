@@ -26,6 +26,7 @@
     tab: 'overview',
     focusAgentId: null, // null -> main
     onlyFocusedModels: false,
+    showIdleSubs: false,
     quotaMode: loadPref('agyHud.quotaMode', 'remaining', 'pulse.quotaMode'), // 'remaining' | 'used'
     usageMode: loadPref('agyHud.usageMode', 'all', 'pulse.usageMode'),       // 'usd' | 'all' | 'net'
     usageRange: loadPref('agyHud.usageRange', 'today', 'pulse.usageRange'),   // 'today' | '7d' | '30d'
@@ -180,7 +181,7 @@
     if (!state.focusAgentId || state.focusAgentId === d.main.id) {
       return d.main;
     }
-    const found = (d.subagents || []).find((s) => s.id === state.focusAgentId);
+    const found = (d.subagents || []).find((s) => s.id === state.focusAgentId && s.status !== 'killed');
     if (!found) {
       state.focusAgentId = null;
       state.onlyFocusedModels = false;
@@ -378,15 +379,73 @@
     `;
   }
 
+  function renderSubRow(s) {
+    const selected = state.focusAgentId === s.id;
+    const pct = s.pct;
+    const barWidth = pct !== null ? Math.min(100, pct).toFixed(1) : '0';
+    const hasMax = Boolean(s.maxTokens && s.maxTokens > 0);
+    const rightText = hasMax
+      ? `${fmtTok(s.usedTokens)} · ${pct.toFixed(1)}%`
+      : fmtTok(s.usedTokens);
+    const rightTitle = hasMax
+      ? `${fmtTok(s.usedTokens)} / ${fmtMax(s.maxTokens)} (${pct.toFixed(1)}%)`
+      : `${fmtTok(s.usedTokens)} / 未知`;
+    const stText = STATUS_TEXT[s.status] || s.status || '空闲';
+    const modelName = s.latestModel || '未调用';
+    return `
+      <div class="sub-row ${selected ? 'is-selected' : ''}" data-sub-id="${esc(s.id)}" role="button" tabindex="0">
+        <div class="sub-row-top">
+          <div class="sub-row-left">
+            <span class="status-dot ${esc(s.status)}" title="${esc(stText)}"></span>
+            <span class="sub-name" title="${esc(s.label)}">${esc(s.label)}</span>
+          </div>
+          <span class="sub-ratio tabular-nums" title="${esc(rightTitle)}">${esc(rightText)}</span>
+        </div>
+        <div class="sub-row-meta">
+          <span class="sub-model" title="${esc(modelName)}">${esc(modelName)}</span>
+          <span class="sub-state ${esc(s.status)}">${esc(stText)}</span>
+        </div>
+        <div class="progress-track slim">
+          <div class="progress-seg" style="width: ${barWidth}%; background: ${pctColor(pct)};"></div>
+        </div>
+      </div>
+    `;
+  }
+
+  function bindSubRowEvents(container) {
+    container.querySelectorAll('.sub-row').forEach((row) => {
+      const activate = () => {
+        const id = row.getAttribute('data-sub-id');
+        state.focusAgentId = state.focusAgentId === id ? null : id;
+        if (!state.focusAgentId) state.onlyFocusedModels = false;
+        render();
+      };
+      row.addEventListener('click', activate);
+      row.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          activate();
+        }
+      });
+    });
+  }
+
   function renderContexts(focus) {
     const d = state.data;
     const m = d.main;
     const subs = d.subagents || [];
+    const activeSubs = subs.filter((s) => s.status === 'running' || s.status === 'waiting');
+    const idleSubs = subs.filter((s) => s.status === 'idle');
 
-    const activeCount = d.sessionTotals?.activeSubagents || 0;
-    $('session-summary').textContent = subs.length
-      ? `${subs.length} 子代理${activeCount ? ` · ${activeCount} 活跃` : ''}`
-      : '';
+    let summaryText = '';
+    if (activeSubs.length && idleSubs.length) {
+      summaryText = `${activeSubs.length} 活跃 · ${idleSubs.length} 已完成`;
+    } else if (activeSubs.length) {
+      summaryText = `${activeSubs.length} 子代理活跃`;
+    } else if (idleSubs.length) {
+      summaryText = `${idleSubs.length} 已完成`;
+    }
+    $('session-summary').textContent = summaryText;
 
     const displayModel = m.sessionModel || m.latestModel;
     $('main-model').textContent = shortModel(displayModel);
@@ -450,63 +509,43 @@
     $('main-remaining').textContent = m.remainingTokens !== null ? `剩 ${fmtTok(m.remainingTokens)}` : '剩 —';
     updateCacheCountdown();
 
-    $('main-card').classList.toggle('is-selected', Boolean(subs.length > 0 && (!state.focusAgentId || state.focusAgentId === m.id)));
+    const visibleCount = activeSubs.length + idleSubs.length;
+    $('main-card').classList.toggle('is-selected', Boolean(visibleCount > 0 && (!state.focusAgentId || state.focusAgentId === m.id)));
 
-    // Subagents (hidden when empty)
-    $('sub-section').classList.toggle('hidden', subs.length === 0);
-    if (!subs.length) {
-      $('sub-list').innerHTML = '';
+    // Subagents (active expanded, idle collapsed by default, killed hidden)
+    $('sub-section').classList.toggle('hidden', visibleCount === 0);
+
+    const activeWrap = $('sub-active-wrap');
+    const subList = $('sub-list');
+    if (!activeSubs.length) {
+      activeWrap.classList.add('hidden');
+      subList.innerHTML = '';
     } else {
-      $('sub-count').textContent = String(subs.length);
-      const subList = $('sub-list');
-      subList.innerHTML = subs.map((s) => {
-        const selected = state.focusAgentId === s.id;
-        const pct = s.pct;
-        const barWidth = pct !== null ? Math.min(100, pct).toFixed(1) : '0';
-        const hasMax = Boolean(s.maxTokens && s.maxTokens > 0);
-        const rightText = hasMax
-          ? `${fmtTok(s.usedTokens)} · ${pct.toFixed(1)}%`
-          : fmtTok(s.usedTokens);
-        const rightTitle = hasMax
-          ? `${fmtTok(s.usedTokens)} / ${fmtMax(s.maxTokens)} (${pct.toFixed(1)}%)`
-          : `${fmtTok(s.usedTokens)} / 未知`;
-        const stText = STATUS_TEXT[s.status] || s.status || '空闲';
-        const modelName = s.latestModel || '未调用';
-        return `
-          <div class="sub-row ${selected ? 'is-selected' : ''}" data-sub-id="${esc(s.id)}" role="button" tabindex="0">
-            <div class="sub-row-top">
-              <div class="sub-row-left">
-                <span class="status-dot ${esc(s.status)}" title="${esc(stText)}"></span>
-                <span class="sub-name" title="${esc(s.label)}">${esc(s.label)}</span>
-              </div>
-              <span class="sub-ratio tabular-nums" title="${esc(rightTitle)}">${esc(rightText)}</span>
-            </div>
-            <div class="sub-row-meta">
-              <span class="sub-model" title="${esc(modelName)}">${esc(modelName)}</span>
-              <span class="sub-state ${esc(s.status)}">${esc(stText)}</span>
-            </div>
-            <div class="progress-track slim">
-              <div class="progress-seg" style="width: ${barWidth}%; background: ${pctColor(pct)};"></div>
-            </div>
-          </div>
-        `;
-      }).join('');
+      activeWrap.classList.remove('hidden');
+      $('sub-count').textContent = String(activeSubs.length);
+      subList.innerHTML = activeSubs.map(renderSubRow).join('');
+      bindSubRowEvents(subList);
+    }
 
-      subList.querySelectorAll('.sub-row').forEach((row) => {
-        const activate = () => {
-          const id = row.getAttribute('data-sub-id');
-          state.focusAgentId = state.focusAgentId === id ? null : id;
-          if (!state.focusAgentId) state.onlyFocusedModels = false;
-          render();
-        };
-        row.addEventListener('click', activate);
-        row.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            activate();
-          }
-        });
-      });
+    const idleWrap = $('sub-idle-wrap');
+    const idleList = $('sub-idle-list');
+    if (!idleSubs.length) {
+      state.showIdleSubs = false;
+      idleWrap.classList.add('hidden');
+      idleList.classList.add('hidden');
+      idleList.innerHTML = '';
+    } else {
+      idleWrap.classList.remove('hidden');
+      $('sub-idle-label').textContent = `已完成 ${idleSubs.length} 个子代理`;
+      $('sub-idle-caret').textContent = state.showIdleSubs ? '▾' : '▸';
+      $('sub-idle-toggle').setAttribute('aria-expanded', String(state.showIdleSubs));
+      idleList.classList.toggle('hidden', !state.showIdleSubs);
+      if (state.showIdleSubs) {
+        idleList.innerHTML = idleSubs.map(renderSubRow).join('');
+        bindSubRowEvents(idleList);
+      } else {
+        idleList.innerHTML = '';
+      }
     }
 
     $('focus-bar').classList.toggle('hidden', Boolean(!focus || focus.isMain));
@@ -778,6 +817,11 @@
     renderLiveStatus();
     renderTabs();
 
+    const verEl = $('app-version');
+    if (verEl && state.data?.version) {
+      verEl.textContent = `v${state.data.version}`;
+    }
+
     const banner = $('state-banner');
     if (state.error) {
       banner.classList.remove('hidden');
@@ -917,6 +961,10 @@
   });
   $('focus-reset').addEventListener('click', resetFocus);
   $('trend-reset-focus').addEventListener('click', resetFocus);
+  $('sub-idle-toggle')?.addEventListener('click', () => {
+    state.showIdleSubs = !state.showIdleSubs;
+    render();
+  });
 
   const setQuotaMode = (mode) => {
     state.quotaMode = mode;
