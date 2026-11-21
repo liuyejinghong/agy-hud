@@ -309,14 +309,6 @@
 
     const rowsHtml = list.map((m) => {
       const active = Boolean(m.isActive);
-      const agentTags = hasSubagents
-        ? (m.agentLabels || []).slice(0, 2).map((lbl) => (
-            `<span class="agent-tag">${esc(lbl.split(' · ')[0])}</span>`
-          )).join('')
-        : '';
-      const extraAgents = hasSubagents && (m.agentLabels || []).length > 2
-        ? `<span class="agent-tag">+${m.agentLabels.length - 2}</span>`
-        : '';
 
       const lastSpeed = m.last ? m.last.speed.toFixed(1) : '—';
       const lastAgentSuffix = hasSubagents && !state.onlyFocusedModels && m.last?.agentLabel
@@ -331,19 +323,25 @@
         ? `近 ${m.avg20.sampleCount} 次加权均值，共 ${m.totalCalls} 次（总输出 / 总生成时长）`
         : `共 ${m.totalCalls} 次调用`;
 
-      const modelTitle = Array.isArray(m.variants) && m.variants.length > 1
-        ? `${m.model}（含 ${m.variants.join(' / ')}）`
-        : m.model;
-      const activeTitle = Array.isArray(m.activeAgents) && m.activeAgents.length
-        ? `当前实时运行中：${m.activeAgents.map((lbl) => lbl.split(' · ')[0]).join('、')}`
-        : '当前实时运行中';
+      const variantSuffix = Array.isArray(m.variants) && m.variants.length > 1
+        ? `（含 ${m.variants.join(' / ')}）`
+        : '';
+      const agentLabels = Array.isArray(m.agentLabels) ? m.agentLabels.map((l) => l.split(' · ')[0]) : [];
+      const agentSuffix = hasSubagents && agentLabels.length > 1
+        ? ` · ${agentLabels.length} 个代理（${agentLabels.join('、')}）`
+        : '';
+      const modelTitle = `${m.model}${variantSuffix}${agentSuffix}`;
+
+      const activeAgentsList = Array.isArray(m.activeAgents) ? m.activeAgents.map((lbl) => lbl.split(' · ')[0]) : [];
+      const activeTitle = activeAgentsList.length > 1
+        ? `当前实时运行中（${activeAgentsList.length} 个）：${activeAgentsList.join('、')}`
+        : (activeAgentsList.length === 1 ? `当前实时运行中：${activeAgentsList[0]}` : '当前实时运行中');
 
       return `
         <div class="speed-row ${active ? 'is-active-model' : ''}">
           <div class="speed-model-cell">
             <span class="speed-model-name" title="${esc(modelTitle)}">${esc(m.model)}</span>
             ${active ? `<span class="badge-active" title="${esc(activeTitle)}"><span class="badge-active-dot"></span>当前活跃</span>` : ''}
-            ${agentTags}${extraAgents}
           </div>
           <span class="speed-num-last tabular-nums" title="${esc(lastTitle)}">${esc(lastSpeed)}</span>
           <span class="speed-num-avg tabular-nums" title="${esc(avgTitle)}">${esc(avgSpeed)}</span>
@@ -448,19 +446,27 @@
         const selected = state.focusAgentId === s.id;
         const pct = s.pct;
         const barWidth = pct !== null ? Math.min(100, pct).toFixed(1) : '0';
-        const rightText = s.maxTokens
-          ? `${fmtTok(s.usedTokens)} / ${fmtMax(s.maxTokens)} · ${pct.toFixed(1)}%`
+        const hasMax = Boolean(s.maxTokens && s.maxTokens > 0);
+        const rightText = hasMax
+          ? `${fmtTok(s.usedTokens)} · ${pct.toFixed(1)}%`
+          : fmtTok(s.usedTokens);
+        const rightTitle = hasMax
+          ? `${fmtTok(s.usedTokens)} / ${fmtMax(s.maxTokens)} (${pct.toFixed(1)}%)`
           : `${fmtTok(s.usedTokens)} / 未知`;
         const stText = STATUS_TEXT[s.status] || s.status || '空闲';
+        const modelName = s.latestModel || '未调用';
         return `
           <div class="sub-row ${selected ? 'is-selected' : ''}" data-sub-id="${esc(s.id)}" role="button" tabindex="0">
-            <div class="card-top">
-              <div class="card-left">
+            <div class="sub-row-top">
+              <div class="sub-row-left">
                 <span class="status-dot ${esc(s.status)}" title="${esc(stText)}"></span>
-                <span class="agent-name">${esc(s.label)}</span>
-                <span class="badge-muted" title="${esc(s.latestModel || '')}">${esc(shortModel(s.latestModel))}</span>
+                <span class="sub-name" title="${esc(s.label)}">${esc(s.label)}</span>
               </div>
-              <span class="ratio tabular-nums">${esc(rightText)}</span>
+              <span class="sub-ratio tabular-nums" title="${esc(rightTitle)}">${esc(rightText)}</span>
+            </div>
+            <div class="sub-row-meta">
+              <span class="sub-model" title="${esc(modelName)}">${esc(modelName)}</span>
+              <span class="sub-state ${esc(s.status)}">${esc(stText)}</span>
             </div>
             <div class="progress-track slim">
               <div class="progress-seg" style="width: ${barWidth}%; background: ${pctColor(pct)};"></div>
@@ -489,6 +495,7 @@
     $('focus-bar').classList.toggle('hidden', Boolean(!focus || focus.isMain));
     if (focus && !focus.isMain) {
       $('focus-name').textContent = focus.label || '子代理';
+      $('focus-name').title = focus.label || '子代理';
     }
   }
 
@@ -681,6 +688,7 @@
     if (!focus) return;
     $('trend-focus-bar').classList.toggle('hidden', Boolean(focus.isMain));
     $('trend-focus-label').textContent = focus.label || '主会话';
+    $('trend-focus-label').title = focus.label || '主会话';
 
     const svg = $('trend-chart');
     const hist = focus.history || [];

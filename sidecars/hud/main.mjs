@@ -201,6 +201,10 @@ function parseToolArgs(rawArgs) {
   return {};
 }
 
+function stripQuotes(v) {
+  return String(v || '').trim().replace(/^"(.*)"$/, '$1').trim();
+}
+
 function scanTrajectoryForSubagents(mainTrajectoryResp, rootConv, appData) {
   const found = new Map();
   const steps = Array.isArray(mainTrajectoryResp?.trajectory?.steps)
@@ -219,16 +223,17 @@ function scanTrajectoryForSubagents(mainTrajectoryResp, rootConv, appData) {
     extractSubagentIds(step?.subagent, candidateIds);
     if (candidateIds.size === 0) continue;
 
-    const args = parseToolArgs(step?.metadata?.toolCall?.args);
-    const typeName = String(args.TypeName || args.typeName || 'subagent').trim();
-    const role = String(args.Role || args.role || '').trim();
+    const args = parseToolArgs(step?.metadata?.toolCall?.argumentsJson || step?.metadata?.toolCall?.args);
+    const typeName = stripQuotes(args.TypeName || args.typeName || step?.invokeSubagent?.typeName || 'subagent') || 'subagent';
+    const role = stripQuotes(args.Role || args.role || step?.invokeSubagent?.role || '');
 
     for (const cid of candidateIds) {
       if (!cid || cid === rootConv || found.has(cid)) continue;
       if (!existsSync(join(appData, 'brain', cid))) continue;
       found.set(cid, {
         id: cid,
-        label: role ? `${typeName} · ${role}` : `${typeName}-${cid.slice(0, 8)}`,
+        label: role || (typeName !== 'subagent' ? `${typeName}-${cid.slice(0, 6)}` : `subagent-${cid.slice(0, 6)}`),
+        hasSpecificLabel: Boolean(role),
         role: typeName,
         source: 'subagent',
         killed: false,
@@ -381,6 +386,7 @@ function addMembersToMap(out, members, excludeConv) {
     out.set(cid, {
       id: cid,
       label,
+      hasSpecificLabel: true,
       role,
       source: 'swarm',
       swarmStatus: info?.status || '',
@@ -411,6 +417,7 @@ function readSwarmMembers(appData, rootConv) {
       out.set(hit.coordConv, {
         id: hit.coordConv,
         label: 'coordinator · 主协调',
+        hasSpecificLabel: true,
         role: 'coordinator',
         source: 'swarm',
         swarmStatus: coordInfo.status || '',
@@ -531,6 +538,7 @@ async function readSqliteSubagents(appData, rootConv) {
       out.set(cid, {
         id: cid,
         label,
+        hasSpecificLabel: Boolean(title),
         role: name || 'subagent',
         source: 'subagent',
         dbStatus: row.status || '',
@@ -547,6 +555,27 @@ async function readSqliteSubagents(appData, rootConv) {
 function stripCalls(agent) {
   const { calls: _ignored, ...rest } = agent;
   return rest;
+}
+
+function mergeChildMeta(prev, next) {
+  if (!prev) return next;
+  const useNextLabel = Boolean(
+    !prev.label ||
+    next.hasSpecificLabel ||
+    (!prev.hasSpecificLabel && next.label && !next.label.startsWith('subagent-'))
+  );
+  return {
+    ...prev,
+    ...next,
+    label: useNextLabel ? next.label : prev.label,
+    hasSpecificLabel: Boolean(prev.hasSpecificLabel || next.hasSpecificLabel),
+    role: (next.role && next.role !== 'subagent') ? next.role : (prev.role || next.role || 'subagent'),
+    source: next.source === 'swarm' ? 'swarm' : (prev.source || next.source),
+    dbStatus: next.dbStatus || prev.dbStatus || '',
+    swarmStatus: next.swarmStatus || prev.swarmStatus || '',
+    killed: Boolean(prev.killed || next.killed),
+    modelHint: next.modelHint || prev.modelHint || '',
+  };
 }
 
 async function buildMetricsPayload(rootConv, clientEtag = '') {
@@ -570,10 +599,9 @@ async function buildMetricsPayload(rootConv, clientEtag = '') {
   const swarmChildren = readSwarmMembers(appData, rootConv);
 
   const childMetaMap = new Map();
-  for (const sourceMap of [stepChildren, sqliteChildren, swarmChildren]) {
+  for (const sourceMap of [sqliteChildren, stepChildren, swarmChildren]) {
     for (const [cid, meta] of sourceMap.entries()) {
-      const prev = childMetaMap.get(cid);
-      childMetaMap.set(cid, prev ? { ...prev, ...meta } : meta);
+      childMetaMap.set(cid, mergeChildMeta(childMetaMap.get(cid), meta));
     }
   }
 
