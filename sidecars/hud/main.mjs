@@ -262,7 +262,7 @@ async function getAgentSnapshotCached(appData, convId, meta, quotaIndex, { scanC
     const prevStatus = normalizeAgentStatus(cached.rawStatus, meta);
     const ttl = adaptiveTrajTtl(prevStatus, Boolean(meta.isMain));
     const fpMatches = fp ? cached.fp === fp : !cached.fp;
-    if (fpMatches && now - cached.fetchedAt < ttl) {
+    if (fpMatches && prevStatus === cached.snapshot.status && now - cached.fetchedAt < ttl) {
       const snap = cached.snapshot;
       snap.label = meta.label || snap.label;
       snap.role = meta.role || snap.role;
@@ -621,6 +621,7 @@ async function buildMetricsPayload(rootConv, clientEtag = '') {
       a.callCount,
       a.usedTokens,
       a.sessionModel || a.latestModel,
+      a.activeModel || '',
       a.compaction?.state || '',
       a.compaction?.stepIndex ?? '',
       a.lastCallTimestampMs ?? '',

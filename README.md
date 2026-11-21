@@ -9,8 +9,8 @@ Real-time telemetry HUD sidecar plugin for **Google Antigravity**, docked in the
 ## Features / 功能特性
 
 - **Model Generation Speed (tok/s)** / **按模型生成速度**
-  - First row pins the active main session model (`当前`), followed by deduplicated models used in the conversation (`Last` and weighted `Avg 20`, excluding TTFT).
-  - 第一行固定展示当前主控会话模型，其余行展示本会话实际运行过的去重模型与纯生成速度（已扣 TTFT）。
+  - Displays full model family names (merging reasoning tiers and Orchestrator wrappers into the underlying model) with live `当前活跃` badges strictly for models actively generating right now (`Last` and weighted `Avg 20`, excluding TTFT).
+  - 展示完整模型名（自动合并思考层级与 Orchestrator 包装），仅在模型实时生成时高亮显示 `当前活跃` 标记，其余行展示本会话使用过的模型与纯生成速度（已扣 TTFT）。
 - **Context Window & `/compact` Tracking** / **上下文与压缩感知**
   - Shows exact `cached / fresh / estimated` bar segments, thinking token share (`思考占输出 XX%`), remaining headroom, and subagent / Swarm member inspection.
   - Detects in-progress and just-completed `/compact` checkpoints immediately with post-compaction size estimation until the next turn.

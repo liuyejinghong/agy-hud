@@ -253,9 +253,9 @@ html, body {
 .speed-head-row,
 .speed-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 54px 54px;
+  grid-template-columns: minmax(0, 1fr) 48px 48px;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .speed-head-row {
@@ -271,9 +271,9 @@ html, body {
   font-size: 12px;
 }
 
-.speed-row.is-focused-model {
-  background: var(--cm-focus-bg);
-  box-shadow: inset 2px 0 0 var(--cm-primary);
+.speed-row.is-active-model {
+  background: color-mix(in srgb, var(--cm-success) 10%, var(--cm-card));
+  box-shadow: inset 2px 0 0 var(--cm-success);
 }
 
 .speed-model-cell {
@@ -291,7 +291,7 @@ html, body {
   text-overflow: ellipsis;
 }
 
-.speed-row.is-focused-model .speed-model-name {
+.speed-row.is-active-model .speed-model-name {
   font-weight: 600;
 }
 
@@ -319,16 +319,32 @@ html, body {
   flex-shrink: 0;
 }
 
-.badge-current {
+.badge-active {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   padding: 0 5px;
   border-radius: 5px;
-  background: color-mix(in srgb, var(--cm-primary) 16%, transparent);
-  color: var(--cm-primary);
+  background: color-mix(in srgb, var(--cm-success) 16%, transparent);
+  color: var(--cm-success);
   font-size: 11px;
   line-height: 16px;
   font-weight: 600;
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+.badge-active-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--cm-success);
+  animation: agy-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes agy-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
 }
 
 .context-card {

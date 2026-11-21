@@ -174,11 +174,6 @@
       .replace(/\s*\(Orchestrator\)$/i, ' (Orch)');
   }
 
-  function normalizeSpeedGroup(name) {
-    const raw = String(name || 'Unknown').trim() || 'Unknown';
-    return raw.replace(/\s*\((?:XHigh|High|Medium|Low|Max|Orchestrator|Orch)\)\s*$/i, '').trim() || raw;
-  }
-
   function getFocusedAgent() {
     const d = state.data;
     if (!d || !d.main) return null;
@@ -311,23 +306,9 @@
     }
 
     const hasSubagents = (d?.subagents || []).length > 0;
-    const showCurrentBadge = list.length > 1;
-    const focusModelName = focus ? (focus.sessionModel || focus.latestModel) : '';
-    const focusModelGroup = focusModelName ? normalizeSpeedGroup(focusModelName) : '';
-    const focusModelEnum = focus ? (focus.sessionModelEnum || focus.latestModelEnum || '') : '';
 
-    const isCurrentModel = (m) => Boolean(
-      focus && (
-        (focusModelEnum && Array.isArray(m.modelEnums) && m.modelEnums.includes(focusModelEnum)) ||
-        (focusModelEnum && m.modelEnum === focusModelEnum) ||
-        (focusModelName && (m.model === focusModelName || m.model === focusModelGroup))
-      )
-    );
-
-    const sorted = [...list].sort((a, b) => (isCurrentModel(a) ? 0 : 1) - (isCurrentModel(b) ? 0 : 1));
-
-    const rowsHtml = sorted.map((m) => {
-      const current = isCurrentModel(m);
+    const rowsHtml = list.map((m) => {
+      const active = Boolean(m.isActive);
       const agentTags = hasSubagents
         ? (m.agentLabels || []).slice(0, 2).map((lbl) => (
             `<span class="agent-tag">${esc(lbl.split(' · ')[0])}</span>`
@@ -351,14 +332,17 @@
         : `共 ${m.totalCalls} 次调用`;
 
       const modelTitle = Array.isArray(m.variants) && m.variants.length > 1
-        ? `${m.model}（含 ${m.variants.map(shortModel).join(' / ')}）`
+        ? `${m.model}（含 ${m.variants.join(' / ')}）`
         : m.model;
+      const activeTitle = Array.isArray(m.activeAgents) && m.activeAgents.length
+        ? `当前实时运行中：${m.activeAgents.map((lbl) => lbl.split(' · ')[0]).join('、')}`
+        : '当前实时运行中';
 
       return `
-        <div class="speed-row ${current ? 'is-focused-model' : ''}">
+        <div class="speed-row ${active ? 'is-active-model' : ''}">
           <div class="speed-model-cell">
-            <span class="speed-model-name" title="${esc(modelTitle)}">${esc(shortModel(m.model))}</span>
-            ${current && showCurrentBadge ? '<span class="badge-current">当前</span>' : ''}
+            <span class="speed-model-name" title="${esc(modelTitle)}">${esc(m.model)}</span>
+            ${active ? `<span class="badge-active" title="${esc(activeTitle)}"><span class="badge-active-dot"></span>当前活跃</span>` : ''}
             ${agentTags}${extraAgents}
           </div>
           <span class="speed-num-last tabular-nums" title="${esc(lastTitle)}">${esc(lastSpeed)}</span>

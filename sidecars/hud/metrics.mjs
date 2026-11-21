@@ -3,9 +3,52 @@
  * Zero external dependencies.
  */
 
+function capitalizeWord(w) {
+  return w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : '';
+}
+
+function isPlaceholderEnum(val) {
+  return /^MODEL_PLACEHOLDER_/i.test(String(val || '').trim());
+}
+
 export function normalizeSpeedGroup(modelDisplayName) {
   const raw = String(modelDisplayName || 'Unknown').trim() || 'Unknown';
-  return raw.replace(/\s*\((?:XHigh|High|Medium|Low|Max|Orchestrator|Orch)\)\s*$/i, '').trim() || raw;
+
+  // Unwrap Orchestrator (...) into its underlying base model family
+  const orchMatch = /^Orchestrator\s*\(([^)]+)\)\s*$/i.exec(raw);
+  if (orchMatch) {
+    const inner = orchMatch[1].trim();
+    if (/^(neon|hydrogen|carbon|argon)$/i.test(inner)) {
+      return `Gemini 4 ${capitalizeWord(inner)}`;
+    }
+    if (/^(opus|sonnet|haiku)\b/i.test(inner)) {
+      return `Claude ${inner}`;
+    }
+    return inner;
+  }
+
+  // Normalize lowercase/hyphenated model slugs (e.g. responseModel, modelName, Swarm modelHint)
+  if (/^[a-z0-9]+(?:[-_.][a-z0-9]+)+$/.test(raw)) {
+    const lower = raw.toLowerCase();
+    if (/^gemini-pro-orchestrator-neon\b/.test(lower)) return 'Gemini 4 Neon';
+    if (/^gemini-pro-orchestrator-argon\b/.test(lower)) return 'Gemini 4 Argon';
+    if (/^gemini-pro-orchestrator(?:-carbon)?(?:\b|$)/.test(lower)) return 'Gemini 4 Carbon';
+    if (/^gemini-flash-worker-agy\b/.test(lower)) return 'Gemini 4 Hydrogen';
+
+    let m = /^gemini-4-(neon|hydrogen|carbon|argon)(?:-(?:tiered-)?(?:xhigh|high|medium|low|max))?$/.exec(lower);
+    if (m) return `Gemini 4 ${capitalizeWord(m[1])}`;
+
+    m = /^gemini-([\d.]+)-flash(?:-(?:xhigh|high|medium|low|max))?$/.exec(lower);
+    if (m) return `Gemini ${m[1]} Flash`;
+
+    m = /^claude-(opus|sonnet|haiku)-(\d+)[-.](\d+)(?:-(?:xhigh|high|medium|low|max|thinking))?$/.exec(lower);
+    if (m) return `Claude ${capitalizeWord(m[1])} ${m[2]}.${m[3]}`;
+
+    m = /^gpt-oss-(\d+b)(?:-(?:xhigh|high|medium|low|max))?$/.exec(lower);
+    if (m) return `GPT-OSS ${m[1].toUpperCase()}`;
+  }
+
+  return raw.replace(/\s*\((?:XHigh|High|Medium|Low|Max|Orchestrator|Orch|Thinking)\)\s*$/i, '').trim() || raw;
 }
 
 function toNonNegInt(val) {
@@ -283,10 +326,51 @@ export function refreshAgentQuota(agentSnapshot, quotaIndex, modelHint = '') {
 /**
  * Extracts normalized context window, usage, breakdown, compaction, and per-call speed records.
  */
+function resolveReadableModelName(
+  enumStr,
+  quotaIndex,
+  calls,
+  executorMetadatas,
+  sessionModelEnum,
+  sessionModel
+) {
+  if (!enumStr) return '';
+  const qEntry = lookupQuota(quotaIndex, { modelEnum: enumStr });
+  if (qEntry?.label && !isPlaceholderEnum(qEntry.label)) {
+    return qEntry.label;
+  }
+  if (Array.isArray(calls)) {
+    for (let i = calls.length - 1; i >= 0; i--) {
+      const c = calls[i];
+      if (c.modelEnum === enumStr && c.modelDisplayName && !isPlaceholderEnum(c.modelDisplayName)) {
+        return c.modelDisplayName;
+      }
+    }
+  }
+  if (Array.isArray(executorMetadatas)) {
+    for (let i = executorMetadatas.length - 1; i >= 0; i--) {
+      const pc = executorMetadatas[i]?.cascadeConfig?.plannerConfig;
+      if (pc?.planModel === enumStr && typeof pc.modelName === 'string' && pc.modelName.trim()) {
+        return normalizeSpeedGroup(pc.modelName);
+      }
+    }
+  }
+  if (
+    enumStr === sessionModelEnum &&
+    sessionModel &&
+    sessionModel !== '未调用' &&
+    !isPlaceholderEnum(sessionModel)
+  ) {
+    return sessionModel;
+  }
+  return '';
+}
+
 export function extractAgentSnapshot(convId, trajectoryResp, meta = {}, quotaIndex = null) {
   const trajectory = trajectoryResp?.trajectory || {};
   const gms = Array.isArray(trajectory.generatorMetadata) ? trajectory.generatorMetadata : [];
   const steps = Array.isArray(trajectory.steps) ? trajectory.steps : [];
+  const executorMetadatas = Array.isArray(trajectory.executorMetadatas) ? trajectory.executorMetadatas : [];
 
   const calls = [];
   let rawTokenBreakdownGroups = null;
@@ -527,6 +611,62 @@ export function extractAgentSnapshot(convId, trajectoryResp, meta = {}, quotaInd
     break;
   }
 
+  const status = normalizeAgentStatus(trajectoryResp?.status, meta);
+  const isRunning = status === 'running' || compaction?.state === 'running';
+  let activeModel = '';
+  let activeModelEnum = '';
+
+  if (isRunning) {
+    let latestUserInputIdx = -1;
+    for (let i = steps.length - 1; i >= 0; i--) {
+      if (steps[i]?.type === 'CORTEX_STEP_TYPE_USER_INPUT') {
+        latestUserInputIdx = i;
+        break;
+      }
+    }
+
+    let foundStepEnum = '';
+    let resolvedStepModel = '';
+    for (let i = steps.length - 1; i > latestUserInputIdx; i--) {
+      const step = steps[i];
+      const stepEnum = String(step?.metadata?.generatorModel || step?.metadata?.modelUsage?.model || '').trim();
+      if (stepEnum) {
+        foundStepEnum = stepEnum;
+        resolvedStepModel = resolveReadableModelName(
+          stepEnum,
+          quotaIndex,
+          calls,
+          executorMetadatas,
+          sessionModelEnum,
+          sessionModel
+        );
+        break;
+      }
+    }
+
+    if (resolvedStepModel) {
+      activeModel = resolvedStepModel;
+      activeModelEnum = foundStepEnum;
+    } else if (
+      !foundStepEnum &&
+      latestCall &&
+      latestCallMaxStepIdx > latestUserInputIdx &&
+      latestCall.modelDisplayName &&
+      !isPlaceholderEnum(latestCall.modelDisplayName)
+    ) {
+      activeModel = latestCall.modelDisplayName;
+      activeModelEnum = latestCall.modelEnum || '';
+    } else if (
+      !foundStepEnum &&
+      sessionModel &&
+      sessionModel !== '未调用' &&
+      !isPlaceholderEnum(sessionModel)
+    ) {
+      activeModel = sessionModel;
+      activeModelEnum = effectiveModelEnum;
+    }
+  }
+
   const history = calls.slice(-24).map((c) => ({
     callIndex: c.callIndex,
     stepIndex: c.stepIndex,
@@ -543,10 +683,12 @@ export function extractAgentSnapshot(convId, trajectoryResp, meta = {}, quotaInd
     label: meta.label || (meta.isMain ? '主会话' : `subagent-${convId.slice(0, 8)}`),
     role: meta.role || (meta.isMain ? 'coordinator' : 'subagent'),
     source: meta.source || (meta.isMain ? 'main' : 'subagent'),
-    status: normalizeAgentStatus(trajectoryResp?.status, meta),
+    status,
     isMain: Boolean(meta.isMain),
     sessionModel,
     sessionModelEnum: effectiveModelEnum,
+    activeModel,
+    activeModelEnum,
     lastCallModel,
     latestModel: sessionModel,
     latestModelEnum: effectiveModelEnum,
@@ -599,6 +741,8 @@ export function aggregateModelSpeeds(agents, quotaIndex = null) {
           totalOutputTokens: 0,
           agentIdSet: new Set(),
           agentLabelSet: new Set(),
+          isActive: false,
+          activeAgentLabelSet: new Set(),
         };
         groups.set(key, grp);
       }
@@ -614,6 +758,42 @@ export function aggregateModelSpeeds(agents, quotaIndex = null) {
         grp.validCalls.push(c);
       }
     }
+  }
+
+  for (const agent of agents) {
+    const running = agent?.status === 'running' || agent?.compaction?.state === 'running';
+    if (!running) continue;
+    const rawActive = agent.activeModel || agent.sessionModel || agent.latestModel || '';
+    if (!rawActive || rawActive === '未调用' || rawActive === 'Unknown' || isPlaceholderEnum(rawActive)) {
+      continue;
+    }
+    const key = normalizeSpeedGroup(rawActive);
+    let grp = groups.get(key);
+    const activeEnum = agent.activeModelEnum || agent.sessionModelEnum || '';
+    if (!grp) {
+      grp = {
+        model: key,
+        modelEnum: activeEnum,
+        responseModel: '',
+        modelEnumSet: new Set(activeEnum ? [activeEnum] : []),
+        variantSet: new Set([rawActive]),
+        allCalls: [],
+        validCalls: [],
+        totalOutputTokens: 0,
+        agentIdSet: new Set(agent.id ? [agent.id] : []),
+        agentLabelSet: new Set(agent.label ? [agent.label] : []),
+        isActive: false,
+        activeAgentLabelSet: new Set(),
+      };
+      groups.set(key, grp);
+    } else {
+      if (activeEnum) grp.modelEnumSet.add(activeEnum);
+      grp.variantSet.add(rawActive);
+      if (agent.id) grp.agentIdSet.add(agent.id);
+      if (agent.label) grp.agentLabelSet.add(agent.label);
+    }
+    grp.isActive = true;
+    grp.activeAgentLabelSet.add(agent.label || agent.id || '主会话');
   }
 
   const out = [];
@@ -648,6 +828,8 @@ export function aggregateModelSpeeds(agents, quotaIndex = null) {
       modelEnum: grp.modelEnum,
       modelEnums: [...grp.modelEnumSet],
       variants,
+      isActive: Boolean(grp.isActive),
+      activeAgents: [...grp.activeAgentLabelSet],
       totalCalls: grp.allCalls.length,
       totalOutputTokens: grp.totalOutputTokens,
       lastTimestampMs: latestValid ? latestValid.timestampMs : (latestAny ? latestAny.timestampMs : 0),
@@ -675,6 +857,11 @@ export function aggregateModelSpeeds(agents, quotaIndex = null) {
     });
   }
 
-  out.sort((a, b) => (b.lastTimestampMs - a.lastTimestampMs) || (b.totalCalls - a.totalCalls));
+  out.sort(
+    (a, b) =>
+      (b.isActive ? 1 : 0) - (a.isActive ? 1 : 0) ||
+      (b.lastTimestampMs - a.lastTimestampMs) ||
+      (b.totalCalls - a.totalCalls)
+  );
   return out;
 }
