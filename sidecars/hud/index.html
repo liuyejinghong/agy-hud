@@ -22,13 +22,31 @@
       <nav class="tabs" role="tablist" aria-label="视图切换">
         <button id="tab-overview" type="button" role="tab" aria-selected="true" class="tab active">总览</button>
         <button id="tab-trend" type="button" role="tab" aria-selected="false" class="tab">趋势</button>
+        <button id="tab-usage" type="button" role="tab" aria-selected="false" class="tab">用量</button>
       </nav>
     </header>
 
     <div id="state-banner" class="state-banner hidden"></div>
 
     <main id="view-overview" class="view">
-      <!-- 1. 速度（按模型） -->
+      <!-- 1. 配额（5h 窗口 · 剩余/已用切换） -->
+      <section class="section">
+        <div class="section-head">
+          <div class="section-title-group">
+            <span class="section-title">配额</span>
+            <span class="section-note">5h 窗口</span>
+          </div>
+          <div class="seg-group" role="group" aria-label="配额展示方式">
+            <button data-qmode="remaining" type="button" class="seg-btn qmode-btn active">剩余</button>
+            <button data-qmode="used" type="button" class="seg-btn qmode-btn">已用</button>
+          </div>
+        </div>
+        <div id="quota-card" class="context-card quota-card" title="点击切换 剩余 / 已用">
+          <div class="section-note">读取中…</div>
+        </div>
+      </section>
+
+      <!-- 2. 速度（按模型） -->
       <section class="section">
         <div class="section-head">
           <div class="section-title-group">
@@ -42,7 +60,7 @@
         </div>
       </section>
 
-      <!-- 2. 上下文 -->
+      <!-- 3. 上下文 -->
       <section class="section">
         <div class="section-head">
           <span class="section-title">上下文</span>
@@ -97,25 +115,47 @@
           <button id="focus-reset" type="button" class="scope-btn">返回主会话</button>
         </div>
       </section>
+    </main>
 
-      <!-- 3. 配额（5h 窗口 · 剩余/已用切换） -->
-      <section class="section">
-        <div class="section-head">
-          <div class="section-title-group">
-            <span class="section-title">配额</span>
-            <span class="section-note">5h 窗口</span>
-          </div>
-          <div class="seg-group" role="group" aria-label="配额展示方式">
-            <button data-qmode="remaining" type="button" class="seg-btn qmode-btn active">剩余</button>
-            <button data-qmode="used" type="button" class="seg-btn qmode-btn">已用</button>
-          </div>
+    <main id="view-trend" class="view hidden">
+      <div id="trend-focus-bar" class="trend-focus-bar hidden">
+        <div class="trend-focus-left">
+          <span>查看：</span>
+          <strong id="trend-focus-label">主会话</strong>
         </div>
-        <div id="quota-card" class="context-card quota-card" title="点击切换 剩余 / 已用">
-          <div class="section-note">读取中…</div>
+        <button id="trend-reset-focus" type="button" class="scope-btn">返回主会话</button>
+      </div>
+
+      <section class="context-card">
+        <div class="card-top">
+          <span class="agent-name">上下文曲线</span>
+          <span class="section-note">75% 警戒线</span>
         </div>
+        <svg id="trend-chart" viewBox="0 0 380 116" class="trend-svg" aria-label="上下文增长曲线"></svg>
       </section>
 
-      <!-- 4. 用量（Antigravity 桌面端 · 合并缓存命中率 · 美元折算） -->
+      <section id="breakdown-card" class="context-card hidden">
+        <div class="card-top">
+          <span class="agent-name">占用构成</span>
+          <span id="breakdown-total" class="section-note tabular-nums"></span>
+        </div>
+        <div id="breakdown-list" class="breakdown-list"></div>
+      </section>
+
+      <section class="table-card">
+        <div class="table-head">
+          <span>#</span>
+          <span>模型</span>
+          <span class="text-right">上下文</span>
+          <span class="text-right">输出</span>
+          <span class="text-right">速度</span>
+        </div>
+        <div id="trend-rows" class="table-body tabular-nums"></div>
+      </section>
+    </main>
+
+    <main id="view-usage" class="view hidden">
+      <!-- 用量（Antigravity 桌面端 · 合并缓存命中率 · 美元折算） -->
       <section class="section">
         <div class="section-head usage-head">
           <div class="section-title-group">
@@ -174,43 +214,6 @@
 
           <div id="usage-models" class="usage-models"></div>
         </div>
-      </section>
-    </main>
-
-    <main id="view-trend" class="view hidden">
-      <div id="trend-focus-bar" class="trend-focus-bar hidden">
-        <div class="trend-focus-left">
-          <span>查看：</span>
-          <strong id="trend-focus-label">主会话</strong>
-        </div>
-        <button id="trend-reset-focus" type="button" class="scope-btn">返回主会话</button>
-      </div>
-
-      <section class="context-card">
-        <div class="card-top">
-          <span class="agent-name">上下文曲线</span>
-          <span class="section-note">75% 警戒线</span>
-        </div>
-        <svg id="trend-chart" viewBox="0 0 380 116" class="trend-svg" aria-label="上下文增长曲线"></svg>
-      </section>
-
-      <section id="breakdown-card" class="context-card hidden">
-        <div class="card-top">
-          <span class="agent-name">占用构成</span>
-          <span id="breakdown-total" class="section-note tabular-nums"></span>
-        </div>
-        <div id="breakdown-list" class="breakdown-list"></div>
-      </section>
-
-      <section class="table-card">
-        <div class="table-head">
-          <span>#</span>
-          <span>模型</span>
-          <span class="text-right">上下文</span>
-          <span class="text-right">输出</span>
-          <span class="text-right">速度</span>
-        </div>
-        <div id="trend-rows" class="table-body tabular-nums"></div>
       </section>
     </main>
   </div>

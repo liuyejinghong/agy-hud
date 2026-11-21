@@ -78,7 +78,7 @@ html, body {
 .header-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -159,7 +159,7 @@ html, body {
 }
 
 .tab {
-  padding: 3px 10px;
+  padding: 3px 8px;
 }
 
 .tab.active,
@@ -555,9 +555,6 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  max-height: 236px;
-  overflow-y: auto;
-  scrollbar-width: thin;
 }
 
 .sub-row {
@@ -772,7 +769,7 @@ html, body {
 }
 
 .usage-bars {
-  height: 44px;
+  height: 64px;
   display: flex;
   align-items: flex-end;
   gap: 3px;
@@ -781,7 +778,7 @@ html, body {
 
 .usage-bar-col {
   flex: 1;
-  height: 42px;
+  height: 62px;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;

@@ -292,13 +292,17 @@
   }
 
   function renderTabs() {
-    const isOv = state.tab === 'overview';
-    $('tab-overview').classList.toggle('active', isOv);
-    $('tab-overview').setAttribute('aria-selected', String(isOv));
-    $('tab-trend').classList.toggle('active', !isOv);
-    $('tab-trend').setAttribute('aria-selected', String(!isOv));
-    $('view-overview').classList.toggle('hidden', !isOv);
-    $('view-trend').classList.toggle('hidden', isOv);
+    const tabs = [
+      ['overview', 'tab-overview', 'view-overview'],
+      ['trend', 'tab-trend', 'view-trend'],
+      ['usage', 'tab-usage', 'view-usage'],
+    ];
+    for (const [key, btnId, viewId] of tabs) {
+      const active = state.tab === key;
+      $(btnId)?.classList.toggle('active', active);
+      $(btnId)?.setAttribute('aria-selected', String(active));
+      $(viewId)?.classList.toggle('hidden', !active);
+    }
   }
 
   function renderModels(focus) {
@@ -685,7 +689,7 @@
     const barsEl = $('usage-bars');
     barsEl.innerHTML = bars.map((b, i) => {
       const bm = metricsList[i];
-      const totalH = bm.val > 0 ? Math.max(3, Math.round((bm.val / maxVal) * 40)) : 2;
+      const totalH = bm.val > 0 ? Math.max(3, Math.round((bm.val / maxVal) * 58)) : 2;
       const netH = state.usageMode === 'net'
         ? totalH
         : (bm.val > 0 ? Math.max(1, Math.round((bm.netPart / Math.max(1e-9, bm.val)) * totalH)) : 2);
@@ -715,7 +719,7 @@
     renderUsageReadout(ds, rates);
 
     const modelsWrap = $('usage-models');
-    const models = [...(ds.models || [])].sort((a, b) => modelValue(b) - modelValue(a)).slice(0, 4);
+    const models = [...(ds.models || [])].sort((a, b) => modelValue(b) - modelValue(a)).slice(0, 8);
     if (!models.length) {
       modelsWrap.innerHTML = '<div class="section-note">该周期暂无模型记录</div>';
     } else {
@@ -835,13 +839,17 @@
       banner.classList.remove('is-err');
     }
 
+    if (state.tab === 'usage') {
+      renderUsage();
+      return;
+    }
+
     if (!state.data?.ready || !state.data.main) return;
     const focus = getFocusedAgent();
     if (state.tab === 'overview') {
+      renderQuota();
       renderModels(focus);
       renderContexts(focus);
-      renderQuota();
-      renderUsage();
     } else {
       renderTrend(focus);
     }
@@ -879,7 +887,7 @@
       if (!payload.unchanged && payload.ready) {
         state.usageData = payload;
         state.usageEtag = payload.etag || '';
-        if (state.tab === 'overview') renderUsage();
+        if (state.tab === 'usage') renderUsage();
       }
     } catch {
       // Non-fatal; retry on next trigger
@@ -912,7 +920,7 @@
         if (state.tab === 'overview' && Date.now() - state.lastQuotaResetRefreshAt > 30_000) {
           renderQuota();
         }
-        if (Date.now() - state.lastUsageFetchAt > USAGE_FALLBACK_MS) {
+        if (state.tab === 'usage' && Date.now() - state.lastUsageFetchAt > USAGE_FALLBACK_MS) {
           void fetchUsage(false);
         }
         return;
@@ -926,8 +934,10 @@
 
       const curCalls = payload.sessionTotals?.totalCalls ?? null;
       const callsChanged = curCalls !== null && curCalls !== state.lastUsageCalls;
-      if (callsChanged || Date.now() - state.lastUsageFetchAt > USAGE_FALLBACK_MS) {
+      if (callsChanged) {
         state.lastUsageCalls = curCalls;
+      }
+      if (state.tab === 'usage' && (callsChanged || Date.now() - state.lastUsageFetchAt > USAGE_FALLBACK_MS)) {
         void fetchUsage(callsChanged);
       }
     } catch (err) {
@@ -942,6 +952,11 @@
   // ---------- events ----------
   $('tab-overview').addEventListener('click', () => { state.tab = 'overview'; render(); });
   $('tab-trend').addEventListener('click', () => { state.tab = 'trend'; render(); });
+  $('tab-usage').addEventListener('click', () => {
+    state.tab = 'usage';
+    render();
+    void fetchUsage(false);
+  });
   $('scope-toggle').addEventListener('click', () => {
     state.onlyFocusedModels = !state.onlyFocusedModels;
     render();
@@ -1007,7 +1022,9 @@
     } else {
       updateCacheCountdown();
       fetchMetrics();
-      fetchUsage(false);
+      if (state.tab === 'usage' || !state.usageData) {
+        fetchUsage(false);
+      }
     }
   });
 
