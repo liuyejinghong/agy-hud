@@ -674,7 +674,44 @@ html, body {
 .quota-pool {
   display: flex;
   flex-direction: column;
+  gap: 5px;
+}
+
+.quota-pool + .quota-pool {
+  padding-top: 6px;
+  border-top: 1px solid var(--cm-card-border);
+}
+
+.quota-buckets {
+  display: flex;
+  flex-direction: column;
   gap: 4px;
+}
+
+.quota-bucket-row {
+  display: grid;
+  grid-template-columns: 20px minmax(56px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.quota-bucket-win {
+  font-size: 11px;
+  color: var(--cm-fg-muted);
+  white-space: nowrap;
+}
+
+.quota-bucket-row .progress-track.slim {
+  margin-top: 0;
+}
+
+.quota-bucket-val {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--cm-fg);
+  text-align: right;
+  white-space: nowrap;
+  min-width: 92px;
 }
 
 .quota-row-top {

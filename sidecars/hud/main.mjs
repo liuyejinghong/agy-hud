@@ -17,6 +17,7 @@ import {
   aggregateModelSpeeds,
   buildQuotaIndex,
   buildQuotaPools,
+  buildQuotaPoolsFromSummary,
   extractAgentSnapshot,
   normalizeAgentStatus,
   refreshAgentQuota,
@@ -146,21 +147,38 @@ async function getQuotaIndex() {
   if (now - quotaCache.fetchedAt < QUOTA_TTL_MS && quotaCache.fetchedAt > 0) {
     return quotaCache;
   }
-  try {
-    const data = await callLs('GetCascadeModelConfigData', {});
-    const index = buildQuotaIndex(data);
-    const pools = buildQuotaPools(data);
+  const [cfgRes, summaryRes] = await Promise.allSettled([
+    callLs('GetCascadeModelConfigData', {}),
+    callLs('RetrieveUserQuotaSummary', {}),
+  ]);
+
+  if (cfgRes.status === 'fulfilled' || summaryRes.status === 'fulfilled') {
+    if (cfgRes.status === 'fulfilled') {
+      quotaCache.index = buildQuotaIndex(cfgRes.value);
+    }
+    const summaryPools = summaryRes.status === 'fulfilled'
+      ? buildQuotaPoolsFromSummary(summaryRes.value)
+      : [];
+    if (summaryPools.length > 0) {
+      quotaCache.pools = summaryPools;
+    } else if (cfgRes.status === 'fulfilled') {
+      quotaCache.pools = buildQuotaPools(cfgRes.value);
+    }
+
     const fpParts = [];
-    for (const entry of index.byEnum.values()) {
-      const pct = entry.remainingFraction !== null ? Math.round(entry.remainingFraction * 1000) : 'x';
-      fpParts.push(`${entry.modelEnum}:${pct}`);
+    for (const p of quotaCache.pools) {
+      const buckets = Array.isArray(p.buckets) && p.buckets.length
+        ? p.buckets
+        : [{ window: '5h', remainingFraction: p.remainingFraction, resetTime: p.resetTime }];
+      for (const b of buckets) {
+        const pct = b.remainingFraction !== null ? Math.round(b.remainingFraction * 1000) : 'x';
+        fpParts.push(`${p.id}:${b.window}:${pct}:${b.resetTime || ''}`);
+      }
     }
     quotaCache.fetchedAt = now;
-    quotaCache.index = index;
-    quotaCache.pools = pools;
     quotaCache.fingerprint = fpParts.sort().join(',');
-  } catch {
-    if (quotaCache.fetchedAt === 0) quotaCache.fetchedAt = now - QUOTA_TTL_MS + 5000;
+  } else if (quotaCache.fetchedAt === 0) {
+    quotaCache.fetchedAt = now - QUOTA_TTL_MS + 5000;
   }
   return quotaCache;
 }

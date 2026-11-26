@@ -16,8 +16,8 @@ Real-time telemetry HUD sidecar plugin for **Google Antigravity**, docked in the
   - Detects in-progress and just-completed `/compact` checkpoints immediately with post-compaction size estimation until the next turn.
 - **5-Minute Reference Cache Countdown** / **缓存保鲜倒计时**
   - Pauses automatically while the main session or subagents are actively running (`运行中 · 缓存保鲜` / `会话活跃中 · 暂停计时`), and ticks down in real time once idle (`< 3m` hot, `3–5m` critical, `>= 5m` likely expired) to help decide when to run `/compact`.
-- **5h Rolling Quota Pools** / **配额监控**
-  - Displays real remaining/used percentages and reset countdowns for `Gemini` and `Claude & GPT` 5h windows (click to toggle `剩余 / 已用`).
+- **5h & Weekly Quota Pools** / **配额监控（5h 与周限额）**
+  - Displays authoritative remaining/used percentages and reset countdowns for both 5-hour and weekly buckets across `Gemini` and `Claude & GPT` via `RetrieveUserQuotaSummary` (with `GetCascadeModelConfigData` fallback; click to toggle `剩余 / 已用`).
 - **Local Desktop Usage & API USD Value** / **桌面端用量与折算价值**
   - Incrementally scans local Antigravity Desktop `transcript.jsonl` logs across `Today / 7d / 30d`, merging cache hit rate, stacked bar chart, top models, and official API USD equivalent.
   - Editable pricing table in `sidecars/hud/pricing.json` (with scheduled rate tiers).

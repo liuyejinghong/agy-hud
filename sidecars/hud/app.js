@@ -120,6 +120,18 @@
     return m > 0 ? `${h}h${m}m` : `${h}h`;
   }
 
+  function fmtLocalResetTime(isoStr) {
+    if (!isoStr) return '';
+    const targetMs = Date.parse(isoStr);
+    if (!Number.isFinite(targetMs)) return '';
+    const d = new Date(targetMs);
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mi = String(d.getMinutes()).padStart(2, '0');
+    return `${mm}-${dd} ${hh}:${mi}`;
+  }
+
   function fmtMinSec(sec) {
     const s = Math.max(0, Math.floor(sec));
     const m = Math.floor(s / 60);
@@ -573,28 +585,54 @@
     }
 
     card.innerHTML = pools.map((p) => {
-      const hasFrac = p.remainingFraction !== null && p.remainingFraction !== undefined;
-      const remPct = hasFrac ? p.remainingFraction * 100 : null;
-      const usedPct = hasFrac ? Math.max(0, 100 - remPct) : null;
-      const displayPct = isUsed ? usedPct : remPct;
-      const valText = displayPct === null
-        ? '—'
-        : (isUsed ? `已用 ${displayPct.toFixed(1)}%` : `${displayPct.toFixed(1)}%`);
-      const cd = fmtResetCountdown(p.resetTime);
-      const barWidth = displayPct !== null ? Math.min(100, Math.max(0, displayPct)).toFixed(1) : '0';
-      const barColor = quotaBarColor(p.remainingFraction, isUsed);
+      const buckets = Array.isArray(p.buckets) && p.buckets.length
+        ? p.buckets
+        : [{ window: '5h', label: '5h', remainingFraction: p.remainingFraction, resetTime: p.resetTime, description: '' }];
+
+      const bucketsHtml = buckets.map((b) => {
+        const hasFrac = b.remainingFraction !== null && b.remainingFraction !== undefined;
+        const remPct = hasFrac ? b.remainingFraction * 100 : null;
+        const usedPct = hasFrac ? Math.max(0, 100 - remPct) : null;
+        const displayPct = isUsed ? usedPct : remPct;
+        const valText = displayPct === null
+          ? '—'
+          : (isUsed ? `已用 ${displayPct.toFixed(1)}%` : `${displayPct.toFixed(1)}%`);
+        const cd = fmtResetCountdown(b.resetTime);
+        const barWidth = displayPct !== null ? Math.min(100, Math.max(0, displayPct)).toFixed(1) : '0';
+        const barColor = quotaBarColor(b.remainingFraction, isUsed);
+
+        const winName = b.window === '5h'
+          ? '5h 窗口'
+          : (b.window === 'weekly' ? '周限额' : (b.label || '限额'));
+        const pctDetail = displayPct === null
+          ? '暂无数据'
+          : (isUsed ? `已用 ${displayPct.toFixed(1)}%` : `剩余 ${displayPct.toFixed(1)}%`);
+        const localReset = fmtLocalResetTime(b.resetTime);
+        const resetDetail = localReset ? ` · 重置 ${localReset}` : '';
+        const descDetail = b.description ? `\n${b.description}` : '';
+        const rowTitle = `${winName}：${pctDetail}${resetDetail}${descDetail}`;
+
+        return `
+          <div class="quota-bucket-row" title="${esc(rowTitle)}">
+            <span class="quota-bucket-win">${esc(b.label || winName)}</span>
+            <div class="progress-track slim">
+              <div class="progress-seg" style="width: ${barWidth}%; background: ${barColor};"></div>
+            </div>
+            <span class="quota-bucket-val tabular-nums">${esc(valText)}${cd ? ` <span class="quota-reset">· ${esc(cd)}</span>` : ''}</span>
+          </div>
+        `;
+      }).join('');
 
       return `
         <div class="quota-pool">
-          <div class="quota-row-top">
+          <div class="quota-row-top" title="${esc(p.description || '')}">
             <div class="quota-pool-left">
               <span class="agent-name">${esc(p.name)}</span>
               <span class="quota-pool-models">${esc(p.modelsSummary || '')}</span>
             </div>
-            <span class="quota-pool-right tabular-nums">${esc(valText)}${cd ? ` <span class="quota-reset">· ${esc(cd)}</span>` : ''}</span>
           </div>
-          <div class="progress-track slim">
-            <div class="progress-seg" style="width: ${barWidth}%; background: ${barColor};"></div>
+          <div class="quota-buckets">
+            ${bucketsHtml}
           </div>
         </div>
       `;

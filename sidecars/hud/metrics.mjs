@@ -184,12 +184,123 @@ export function buildQuotaPools(modelConfigData) {
   }
 
   const order = { gemini: 0, claude_gpt: 1, other: 2 };
+  const nowMs = Date.now();
   return [...buckets.values()]
     .sort((a, b) => (order[a.id] ?? 9) - (order[b.id] ?? 9))
-    .map((p) => ({
-      ...p,
-      usedFraction: p.remainingFraction !== null ? Math.max(0, 1 - p.remainingFraction) : null,
-    }));
+    .map((p) => {
+      const usedFraction = p.remainingFraction !== null ? Math.max(0, 1 - p.remainingFraction) : null;
+      const resetMs = p.resetTime ? Date.parse(p.resetTime) : NaN;
+      const isWeekly = Number.isFinite(resetMs) && (resetMs - nowMs > 6 * 3600 * 1000);
+      const win = isWeekly ? 'weekly' : '5h';
+      return {
+        ...p,
+        usedFraction,
+        buckets: [
+          {
+            window: win,
+            label: win === 'weekly' ? '周' : '5h',
+            remainingFraction: p.remainingFraction,
+            usedFraction,
+            resetTime: p.resetTime,
+            description: '',
+          },
+        ],
+      };
+    });
+}
+
+/**
+ * Parses authoritative RetrieveUserQuotaSummary response (both 5h and weekly limits per group).
+ */
+export function buildQuotaPoolsFromSummary(summaryData) {
+  const groups = Array.isArray(summaryData?.response?.groups)
+    ? summaryData.response.groups
+    : (Array.isArray(summaryData?.groups) ? summaryData.groups : []);
+  if (groups.length === 0) return [];
+
+  const winOrder = { '5h': 0, weekly: 1, other: 2 };
+  const poolOrder = { gemini: 0, claude_gpt: 1, other: 2 };
+  const pools = [];
+
+  for (const grp of groups) {
+    if (!grp || typeof grp !== 'object') continue;
+    const displayName = String(grp.displayName || '').trim();
+    let groupMeta;
+    if (/gemini/i.test(displayName)) {
+      groupMeta = { id: 'gemini', name: 'Gemini', modelsSummary: 'Neon · Hydrogen · Carbon · Flash' };
+    } else if (/claude|gpt/i.test(displayName)) {
+      groupMeta = { id: 'claude_gpt', name: 'Claude & GPT', modelsSummary: 'Opus 5.5 · Sonnet 5.5 · GPT' };
+    } else {
+      groupMeta = {
+        id: displayName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'other',
+        name: displayName || 'Other',
+        modelsSummary: '',
+      };
+    }
+
+    const rawBuckets = Array.isArray(grp.buckets) ? grp.buckets : [];
+    const buckets = [];
+    for (const b of rawBuckets) {
+      if (!b || typeof b !== 'object') continue;
+      const rawWindow = String(b.window || '').toLowerCase().trim();
+      let win;
+      if (rawWindow === '5h' || rawWindow === 'weekly') {
+        win = rawWindow;
+      } else {
+        const hint = `${b.bucketId || ''} ${b.displayName || ''}`;
+        if (/5h|five\s*hour/i.test(hint)) win = '5h';
+        else if (/week/i.test(hint)) win = 'weekly';
+        else win = 'other';
+      }
+
+      const label = win === '5h'
+        ? '5h'
+        : (win === 'weekly' ? '周' : String(b.displayName || b.bucketId || '限额'));
+      const resetTime = typeof b.resetTime === 'string' && b.resetTime ? b.resetTime : null;
+
+      let remainingFraction = null;
+      if (typeof b.remainingFraction === 'number' && Number.isFinite(b.remainingFraction)) {
+        remainingFraction = Math.max(0, Math.min(1, b.remainingFraction));
+      } else if (resetTime) {
+        // Proto3 omits default 0.0 float values when exhausted while preserving resetTime.
+        remainingFraction = 0;
+      }
+      const usedFraction = remainingFraction !== null ? Math.max(0, 1 - remainingFraction) : null;
+      const description = typeof b.description === 'string' ? b.description : '';
+
+      buckets.push({
+        window: win,
+        label,
+        remainingFraction,
+        usedFraction,
+        resetTime,
+        description,
+      });
+    }
+
+    buckets.sort((a, b) => (winOrder[a.window] ?? 9) - (winOrder[b.window] ?? 9));
+
+    let summaryBucket = buckets[0] || null;
+    for (const b of buckets) {
+      if (b.remainingFraction === null) continue;
+      if (!summaryBucket || summaryBucket.remainingFraction === null || b.remainingFraction < summaryBucket.remainingFraction) {
+        summaryBucket = b;
+      }
+    }
+
+    pools.push({
+      id: groupMeta.id,
+      name: groupMeta.name,
+      modelsSummary: groupMeta.modelsSummary,
+      description: typeof grp.description === 'string' ? grp.description : '',
+      remainingFraction: summaryBucket?.remainingFraction ?? null,
+      usedFraction: summaryBucket?.usedFraction ?? null,
+      resetTime: summaryBucket?.resetTime ?? null,
+      buckets,
+    });
+  }
+
+  return pools.sort((a, b) => (poolOrder[a.id] ?? 9) - (poolOrder[b.id] ?? 9));
 }
 
 /**
