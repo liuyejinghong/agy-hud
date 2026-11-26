@@ -9,17 +9,17 @@
   "rules": [
     {
       "prefix": "gemini-flash-worker-agy",
-      "displayName": "Hydrogen",
+      "displayName": "Gemini 4 Hydrogen",
       "rates": { "input": 1.50, "cacheRead": 0.075, "output": 7.50 }
     },
     {
       "prefix": "gemini-pro-orchestrator-neon",
-      "displayName": "Orchestrator (Neon)",
+      "displayName": "Gemini 4 Neon",
       "rates": { "input": 3.00, "cacheRead": 0.15, "output": 15.00 }
     },
     {
       "prefix": "gemini-pro-orchestrator-argon",
-      "displayName": "Orchestrator (Argon)",
+      "displayName": "Gemini 4 Argon",
       "rates": { "input": 2.00, "cacheRead": 0.10, "output": 10.00 },
       "scheduled": [
         { "effectiveFrom": "2026-12-01", "rates": { "input": 4.00, "cacheRead": 0.20, "output": 20.00 } }
@@ -27,7 +27,7 @@
     },
     {
       "prefix": "gemini-pro-orchestrator",
-      "displayName": "Orchestrator (Carbon)",
+      "displayName": "Gemini 4 Carbon",
       "rates": { "input": 2.00, "cacheRead": 0.10, "output": 10.00 },
       "scheduled": [
         { "effectiveFrom": "2026-12-01", "rates": { "input": 4.00, "cacheRead": 0.20, "output": 20.00 } }
@@ -35,17 +35,17 @@
     },
     {
       "prefix": "gemini-4-hydrogen",
-      "displayName": "Hydrogen",
+      "displayName": "Gemini 4 Hydrogen",
       "rates": { "input": 1.50, "cacheRead": 0.075, "output": 7.50 }
     },
     {
       "prefix": "gemini-4-neon",
-      "displayName": "Neon",
+      "displayName": "Gemini 4 Neon",
       "rates": { "input": 3.00, "cacheRead": 0.15, "output": 15.00 }
     },
     {
       "prefix": "gemini-4-carbon",
-      "displayName": "Carbon",
+      "displayName": "Gemini 4 Carbon",
       "rates": { "input": 2.00, "cacheRead": 0.10, "output": 10.00 },
       "scheduled": [
         { "effectiveFrom": "2026-12-01", "rates": { "input": 4.00, "cacheRead": 0.20, "output": 20.00 } }
@@ -53,7 +53,7 @@
     },
     {
       "prefix": "gemini-4-argon",
-      "displayName": "Argon",
+      "displayName": "Gemini 4 Argon",
       "rates": { "input": 2.00, "cacheRead": 0.10, "output": 10.00 },
       "scheduled": [
         { "effectiveFrom": "2026-12-01", "rates": { "input": 4.00, "cacheRead": 0.20, "output": 20.00 } }
@@ -61,7 +61,7 @@
     },
     {
       "prefix": "gemini-3.8-flash",
-      "displayName": "3.8 Flash",
+      "displayName": "Gemini 3.8 Flash",
       "rates": { "input": 0.75, "cacheRead": 0.075, "output": 3.75 },
       "scheduled": [
         { "effectiveFrom": "2027-01-01", "rates": { "input": 1.50, "cacheRead": 0.15, "output": 7.50 } }

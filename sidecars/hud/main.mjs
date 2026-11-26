@@ -22,7 +22,7 @@ import {
   normalizeAgentStatus,
   refreshAgentQuota,
 } from './metrics.mjs';
-import { createUsageScanner } from './usage.mjs';
+import { computeSessionUsage, createUsageScanner, loadPricing } from './usage.mjs';
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -51,6 +51,7 @@ const REVERSE_SWARM_TTL_MS = 5_000;
 
 const STATIC = {
   '/styles.css': ['styles.css', 'text/css; charset=utf-8'],
+  '/i18n.js': ['i18n.js', 'application/javascript; charset=utf-8'],
   '/app.js': ['app.js', 'application/javascript; charset=utf-8'],
 };
 
@@ -142,9 +143,9 @@ async function callLs(method, body = {}) {
 
 const quotaCache = { fetchedAt: 0, index: buildQuotaIndex(null), pools: [], fingerprint: '' };
 
-async function getQuotaIndex() {
+async function getQuotaIndex({ force = false } = {}) {
   const now = Date.now();
-  if (now - quotaCache.fetchedAt < QUOTA_TTL_MS && quotaCache.fetchedAt > 0) {
+  if (!force && now - quotaCache.fetchedAt < QUOTA_TTL_MS && quotaCache.fetchedAt > 0) {
     return quotaCache;
   }
   const [cfgRes, summaryRes] = await Promise.allSettled([
@@ -605,9 +606,9 @@ function mergeChildMeta(prev, next) {
   };
 }
 
-async function buildMetricsPayload(rootConv, clientEtag = '') {
+async function buildMetricsPayload(rootConv, clientEtag = '', { forceQuota = false } = {}) {
   const appData = resolveAppDataForConv(rootConv);
-  const quotaRes = await getQuotaIndex();
+  const quotaRes = await getQuotaIndex({ force: forceQuota });
   const quotaIndex = quotaRes.index;
 
   const [mainResult, sqliteChildren] = await Promise.all([
@@ -653,6 +654,8 @@ async function buildMetricsPayload(rootConv, clientEtag = '') {
 
   const allAgents = [mainSnapshot, ...subagentSnapshots];
   const models = aggregateModelSpeeds(allAgents, quotaIndex);
+  const pricing = loadPricing(join(__dirname, 'pricing.json'));
+  const sessionCost = computeSessionUsage(allAgents, pricing.data);
 
   const mainPublic = {
     ...stripCalls(mainSnapshot),
@@ -683,9 +686,9 @@ async function buildMetricsPayload(rootConv, clientEtag = '') {
       a.label,
     ].join(':'))
     .join('|');
-  const etag = `${PLUGIN_VERSION}#${rootConv}#${quotaRes.fingerprint}#${agentSig}`;
+  const etag = `${PLUGIN_VERSION}#${rootConv}#${quotaRes.fingerprint}#${pricing.fp || pricing.data?.updatedAt || ''}#${agentSig}`;
 
-  if (clientEtag && clientEtag === etag) {
+  if (!forceQuota && clientEtag && clientEtag === etag) {
     return { conversationId: rootConv, version: PLUGIN_VERSION, ready: true, unchanged: true, etag };
   }
 
@@ -700,6 +703,7 @@ async function buildMetricsPayload(rootConv, clientEtag = '') {
     subagents: subagentsPublic,
     models,
     quotaPools: quotaRes.pools,
+    sessionCost,
     sessionTotals: {
       agentCount: allAgents.length,
       activeSubagents,
@@ -736,7 +740,8 @@ app.api('/api/metrics', async (data) => {
     return { conversationId: conv || null, version: PLUGIN_VERSION, ready: false, error: '等待会话上下文' };
   }
   try {
-    return await buildMetricsPayload(conv, typeof data.etag === 'string' ? data.etag : '');
+    const forceQuota = data.refreshQuota === '1';
+    return await buildMetricsPayload(conv, typeof data.etag === 'string' ? data.etag : '', { forceQuota });
   } catch (err) {
     return {
       conversationId: conv,

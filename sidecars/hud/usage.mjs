@@ -68,11 +68,43 @@ export function loadPricing(pricingPath) {
   }
 }
 
-export function resolveModelRate(modelId, pricingData = FALLBACK_PRICING, dateStr = '') {
-  const raw = String(modelId || 'unknown').trim() || 'unknown';
-  const lower = raw.toLowerCase();
-  const rules = Array.isArray(pricingData?.rules) ? pricingData.rules : [];
+const DISPLAY_NAME_TO_PREFIX = {
+  'gemini 4 hydrogen': 'gemini-4-hydrogen',
+  hydrogen: 'gemini-4-hydrogen',
+  'gemini 4 neon': 'gemini-4-neon',
+  neon: 'gemini-4-neon',
+  'gemini 4 argon': 'gemini-4-argon',
+  argon: 'gemini-4-argon',
+  'gemini 4 carbon': 'gemini-4-carbon',
+  carbon: 'gemini-4-carbon',
+  orchestrator: 'gemini-pro-orchestrator',
+  'gemini 3.8 flash': 'gemini-3.8-flash',
+  '3.8 flash': 'gemini-3.8-flash',
+  'claude opus 5.5': 'claude-opus-5-5',
+  'claude sonnet 5.5': 'claude-sonnet-5-5',
+  'gpt-oss 120b': 'gpt-oss-120b',
+};
 
+function normalizeModelLookupName(raw) {
+  let s = String(raw || '').trim();
+  const orchMatch = /^Orchestrator\s*\(([^)]+)\)\s*$/i.exec(s);
+  if (orchMatch) {
+    const inner = orchMatch[1].trim();
+    if (/^(neon|hydrogen|carbon|argon)$/i.test(inner)) {
+      s = `Gemini 4 ${inner}`;
+    } else if (/^(opus|sonnet|haiku)\b/i.test(inner)) {
+      s = `Claude ${inner}`;
+    } else {
+      s = inner;
+    }
+  }
+  return s
+    .replace(/\s*\((?:XHigh|High|Medium|Low|Max|Orchestrator|Orch|Thinking)\)\s*$/i, '')
+    .trim()
+    .toLowerCase();
+}
+
+function matchRuleByPrefix(lower, rules) {
   let matched = null;
   let matchedLen = -1;
   for (const r of rules) {
@@ -83,8 +115,40 @@ export function resolveModelRate(modelId, pricingData = FALLBACK_PRICING, dateSt
       matchedLen = prefix.length;
     }
   }
+  return matched;
+}
 
-  const def = pricingData?.default || FALLBACK_PRICING.default;
+export function resolveModelRate(modelId, pricingData = FALLBACK_PRICING, dateStr = '') {
+  const raw = String(modelId || 'unknown').trim() || 'unknown';
+  const lower = raw.toLowerCase();
+  const effectivePricing = pricingData || FALLBACK_PRICING;
+  const rules = Array.isArray(effectivePricing?.rules) ? effectivePricing.rules : [];
+
+  let matched = matchRuleByPrefix(lower, rules);
+
+  if (!matched) {
+    const norm = normalizeModelLookupName(raw);
+    const mappedPrefix = DISPLAY_NAME_TO_PREFIX[norm];
+    if (mappedPrefix) {
+      matched = matchRuleByPrefix(mappedPrefix, rules);
+    }
+    if (!matched && norm) {
+      let bestDispLen = -1;
+      for (const r of rules) {
+        const disp = String(r?.displayName || '')
+          .replace(/\{tier\}|\{raw\}/g, '')
+          .trim()
+          .toLowerCase();
+        if (!disp) continue;
+        if ((norm === disp || norm.startsWith(`${disp} `) || norm.startsWith(`${disp}(`)) && disp.length > bestDispLen) {
+          matched = r;
+          bestDispLen = disp.length;
+        }
+      }
+    }
+  }
+
+  const def = effectivePricing?.default || FALLBACK_PRICING.default;
   const rule = matched || def;
   let rates = rule.rates || FALLBACK_PRICING.default.rates;
 
@@ -238,6 +302,89 @@ function emptyBar(label) {
   };
 }
 
+function addModelToMap(modelsMap, rate, row) {
+  let m = modelsMap.get(rate.displayName);
+  if (!m) {
+    m = { name: rate.displayName, ...emptyPeriod() };
+    modelsMap.set(rate.displayName, m);
+  }
+  addToBucket(m, row, rate);
+}
+
+function pickCallModelKey(call, agent) {
+  const resp = typeof call?.responseModel === 'string' ? call.responseModel.trim() : '';
+  if (resp) return resp;
+  const disp = typeof call?.modelDisplayName === 'string' ? call.modelDisplayName.trim() : '';
+  if (disp && disp !== 'Unknown' && !/^MODEL_PLACEHOLDER_/i.test(disp)) return disp;
+  const sess = typeof agent?.sessionModel === 'string' ? agent.sessionModel.trim() : '';
+  if (sess && sess !== '未调用' && sess !== 'Unknown' && !/^MODEL_PLACEHOLDER_/i.test(sess)) return sess;
+  const latest = typeof agent?.latestModel === 'string' ? agent.latestModel.trim() : '';
+  if (latest && latest !== '未调用' && latest !== 'Unknown' && !/^MODEL_PLACEHOLDER_/i.test(latest)) return latest;
+  return disp || 'unknown';
+}
+
+export function computeSessionUsage(agents, pricingData = FALLBACK_PRICING) {
+  const list = Array.isArray(agents) ? agents : [];
+  const effectivePricing = pricingData || FALLBACK_PRICING;
+  const todayStr = localDateKey(new Date());
+
+  const totalSummary = emptyPeriod();
+  const mainSummary = emptyPeriod();
+  const subSummary = emptyPeriod();
+  const modelsMap = new Map();
+  let subagentCount = 0;
+
+  for (const agent of list) {
+    if (!agent || typeof agent !== 'object') continue;
+    const calls = Array.isArray(agent.calls) ? agent.calls : [];
+    const isMain = Boolean(agent.isMain);
+    let agentCallCount = 0;
+
+    for (const c of calls) {
+      if (!c || typeof c !== 'object') continue;
+      agentCallCount += 1;
+      const modelKey = pickCallModelKey(c, agent);
+      const ts = Number(c.timestampMs);
+      const dateStr = Number.isFinite(ts) && ts > 1_000_000_000_000
+        ? localDateKey(new Date(ts))
+        : todayStr;
+      const rate = resolveModelRate(modelKey, effectivePricing, dateStr);
+      const row = {
+        inp: Math.max(0, Number(c.inputTokens) || 0),
+        cache: Math.max(0, Number(c.cacheReadTokens) || 0),
+        out: Math.max(0, Number(c.outputTokens) || 0),
+        calls: 1,
+      };
+      addToBucket(totalSummary, row, rate);
+      addToBucket(isMain ? mainSummary : subSummary, row, rate);
+      addModelToMap(modelsMap, rate, row);
+    }
+
+    if (!isMain && agentCallCount > 0) {
+      subagentCount += 1;
+    }
+  }
+
+  finalizeSummary(totalSummary);
+  finalizeSummary(mainSummary);
+  finalizeSummary(subSummary);
+
+  const models = [...modelsMap.values()]
+    .map((m) => finalizeSummary(m))
+    .sort((a, b) => (b.totalUsd - a.totalUsd) || (b.totalTok - a.totalTok));
+
+  return {
+    ...totalSummary,
+    mainTok: mainSummary.totalTok,
+    mainUsd: mainSummary.totalUsd,
+    subagentsTok: subSummary.totalTok,
+    subagentsUsd: subSummary.totalUsd,
+    subagentCount,
+    models,
+    pricingUpdatedAt: effectivePricing?.updatedAt || '',
+  };
+}
+
 export function createUsageScanner({ appData, pricingPath }) {
   const fileCache = new Map(); // filePath -> { fp, rows }
   let lastScanAt = 0;
@@ -326,33 +473,24 @@ export function createUsageScanner({ appData, pricingPath }) {
 
     let minTodayHour = currentHour;
 
-    const addModel = (modelsMap, rate, row) => {
-      let m = modelsMap.get(rate.displayName);
-      if (!m) {
-        m = { name: rate.displayName, ...emptyPeriod() };
-        modelsMap.set(rate.displayName, m);
-      }
-      addToBucket(m, row, rate);
-    };
-
     for (const entry of fileCache.values()) {
       for (const row of entry.rows) {
         if (!d30Set.has(row.dateKey)) continue;
         const rate = resolveModelRate(row.model, pricingData, row.dateKey);
 
         addToBucket(d30Summary, row, rate);
-        addModel(d30Models, rate, row);
+        addModelToMap(d30Models, rate, row);
         const dayBar = d30DayMap.get(row.dateKey);
         if (dayBar) addToBucket(dayBar, row, rate);
 
         if (d7Set.has(row.dateKey)) {
           addToBucket(d7Summary, row, rate);
-          addModel(d7Models, rate, row);
+          addModelToMap(d7Models, rate, row);
         }
 
         if (row.dateKey === todayStr) {
           addToBucket(todaySummary, row, rate);
-          addModel(todayModels, rate, row);
+          addModelToMap(todayModels, rate, row);
           if (row.hour < minTodayHour) minTodayHour = row.hour;
           let hb = todayHourMap.get(row.hour);
           if (!hb) {
@@ -378,6 +516,7 @@ export function createUsageScanner({ appData, pricingPath }) {
       unchanged: false,
       etag,
       updatedAt: now.toISOString(),
+      pricingUpdatedAt: pricingData?.updatedAt || '',
       today: finalizePeriod(todaySummary, todayBars, todayModels),
       d7: finalizePeriod(d7Summary, d7Bars, d7Models),
       d30: finalizePeriod(d30Summary, d30Bars, d30Models),

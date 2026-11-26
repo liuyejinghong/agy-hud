@@ -525,13 +525,20 @@ export function extractAgentSnapshot(convId, trajectoryResp, meta = {}, quotaInd
     const stepForTime = plannerStep || latestStep;
     const parsedTs = parseTimestampMs(stepForTime);
     const timestampMs = parsedTs !== null ? parsedTs : callIndex;
-    if (Array.isArray(gm.stepIndices) && gm.stepIndices.length > 0) {
-      const gmMax = Math.max(...gm.stepIndices);
+    const curStepIdx = stepIndex !== null ? stepIndex : callIndex;
+    const gmMax = Array.isArray(gm.stepIndices) && gm.stepIndices.length > 0
+      ? Math.max(...gm.stepIndices)
+      : null;
+    const maxStepIdx = gmMax !== null && Number.isFinite(gmMax)
+      ? Math.max(curStepIdx, gmMax)
+      : curStepIdx;
+    if (gmMax !== null && Number.isFinite(gmMax)) {
       if (gmMax > latestCallMaxStepIdx) latestCallMaxStepIdx = gmMax;
     } else if (stepIndex !== null && stepIndex > latestCallMaxStepIdx) {
       latestCallMaxStepIdx = stepIndex;
     }
 
+    const ttftSec = parseDurationSec(cm.timeToFirstToken);
     let streamingSec = parseDurationSec(cm.streamingDuration);
     if (streamingSec === null && plannerStep?.metadata) {
       const fin = Date.parse(plannerStep.metadata.finishedGeneratingAt || '');
@@ -567,7 +574,8 @@ export function extractAgentSnapshot(convId, trajectoryResp, meta = {}, quotaInd
       agentId: convId,
       agentLabel: meta.label || convId.slice(0, 8),
       callIndex,
-      stepIndex: stepIndex !== null ? stepIndex : callIndex,
+      stepIndex: curStepIdx,
+      maxStepIdx,
       timestampMs,
       modelEnum,
       responseModel,
@@ -577,6 +585,7 @@ export function extractAgentSnapshot(convId, trajectoryResp, meta = {}, quotaInd
       outputTokens,
       thinkingOutputTokens,
       responseOutputTokens,
+      ttftSec,
       streamingSec,
       speed,
       usedTokens,
@@ -778,16 +787,47 @@ export function extractAgentSnapshot(convId, trajectoryResp, meta = {}, quotaInd
     }
   }
 
-  const history = calls.slice(-24).map((c) => ({
-    callIndex: c.callIndex,
-    stepIndex: c.stepIndex,
-    usedTokens: c.usedTokens,
-    maxTokens: c.maxTokens,
-    outputTokens: c.outputTokens,
-    streamingSec: c.streamingSec,
-    speed: c.speed !== null ? Number(c.speed.toFixed(1)) : null,
-    model: c.modelDisplayName,
-  }));
+  const doneCheckpoints = [];
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    if (
+      step?.type === 'CORTEX_STEP_TYPE_CHECKPOINT' &&
+      String(step.status || '').toUpperCase() === 'CORTEX_STEP_STATUS_DONE'
+    ) {
+      doneCheckpoints.push(i);
+    }
+  }
+
+  const sliceStart = Math.max(0, calls.length - 24);
+  const history = [];
+  for (let idx = sliceStart; idx < calls.length; idx++) {
+    const c = calls[idx];
+    const prev = idx > 0 ? calls[idx - 1] : null;
+    const prevMaxStepIdx = prev ? prev.maxStepIdx : -1;
+    const curStepIdx = c.stepIndex;
+    let compactedBefore = false;
+    for (const cpIdx of doneCheckpoints) {
+      if (prevMaxStepIdx < cpIdx && cpIdx < curStepIdx) {
+        compactedBefore = true;
+        break;
+      }
+    }
+    history.push({
+      callIndex: c.callIndex,
+      stepIndex: c.stepIndex,
+      usedTokens: c.usedTokens,
+      maxTokens: c.maxTokens,
+      outputTokens: c.outputTokens,
+      streamingSec: c.streamingSec,
+      ttftSec: typeof c.ttftSec === 'number' && Number.isFinite(c.ttftSec)
+        ? Number(c.ttftSec.toFixed(2))
+        : null,
+      deltaTokens: prev ? (c.usedTokens - prev.usedTokens) : c.usedTokens,
+      compactedBefore,
+      speed: c.speed !== null ? Number(c.speed.toFixed(1)) : null,
+      model: c.modelDisplayName,
+    });
+  }
 
   return {
     id: convId,
@@ -919,12 +959,19 @@ export function aggregateModelSpeeds(agents, quotaIndex = null) {
     const recent20 = valid.slice(-20);
     let recentOut = 0;
     let recentSec = 0;
+    let ttftSum = 0;
+    let ttftCount = 0;
     for (const c of recent20) {
       recentOut += c.outputTokens;
       recentSec += c.streamingSec;
+      if (typeof c.ttftSec === 'number' && Number.isFinite(c.ttftSec) && c.ttftSec > 0) {
+        ttftSum += c.ttftSec;
+        ttftCount += 1;
+      }
     }
 
     const avgSpeed = recentSec > 0 ? recentOut / recentSec : null;
+    const avgTtftSec = ttftCount > 0 ? Number((ttftSum / ttftCount).toFixed(2)) : null;
     const variants = [...grp.variantSet];
     const quota =
       lookupQuota(quotaIndex, {
@@ -949,6 +996,9 @@ export function aggregateModelSpeeds(agents, quotaIndex = null) {
             speed: Number(latestValid.speed.toFixed(1)),
             outputTokens: latestValid.outputTokens,
             streamingSec: Number(latestValid.streamingSec.toFixed(2)),
+            ttftSec: typeof latestValid.ttftSec === 'number' && Number.isFinite(latestValid.ttftSec)
+              ? Number(latestValid.ttftSec.toFixed(2))
+              : null,
             agentId: latestValid.agentId,
             agentLabel: latestValid.agentLabel,
             timestampMs: latestValid.timestampMs,
@@ -960,6 +1010,7 @@ export function aggregateModelSpeeds(agents, quotaIndex = null) {
             sampleCount: recent20.length,
             totalOutputTokens: recentOut,
             totalStreamingSec: Number(recentSec.toFixed(2)),
+            avgTtftSec,
           }
         : null,
       agentIds: [...grp.agentIdSet],
